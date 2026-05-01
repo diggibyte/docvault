@@ -1,0 +1,1635 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8"/>
+<meta name="viewport" content="width=device-width, initial-scale=1.0"/>
+<title>DocVault — Document Gallery</title>
+<link href="https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@300;400;500;600;700;800&family=JetBrains+Mono:wght@400;500&display=swap" rel="stylesheet"/>
+<style>
+*,*::before,*::after{box-sizing:border-box;margin:0;padding:0}
+:root{
+  --bg:#f4f2ee;--surface:#ffffff;--card:#ffffff;--border:#e2ddd6;--border2:#ccc7be;
+  --accent:#c84b31;--accent2:#1e6b3c;--text:#1a1814;--text2:#4a4540;--muted:#8a847c;
+  --tag-bg:#edeae5;--shadow:0 1px 3px rgba(0,0,0,.08),0 4px 16px rgba(0,0,0,.06);
+  --shadow-lg:0 8px 32px rgba(0,0,0,.12);--header-h:60px;
+}
+body{font-family:'Plus Jakarta Sans',sans-serif;background:var(--bg);color:var(--text);min-height:100vh;font-size:14px}
+::-webkit-scrollbar{width:6px}::-webkit-scrollbar-track{background:transparent}::-webkit-scrollbar-thumb{background:var(--border2);border-radius:10px}
+
+/* ══ OVERLAY MODALS ══ */
+.overlay{position:fixed;inset:0;background:rgba(0,0,0,.55);backdrop-filter:blur(6px);z-index:9999;display:none;align-items:center;justify-content:center;padding:20px}
+.overlay.show{display:flex}
+@keyframes fadeUp{from{opacity:0;transform:translateY(16px)}to{opacity:1;transform:translateY(0)}}
+@keyframes fadeIn{from{opacity:0}to{opacity:1}}
+@keyframes slideUp{from{opacity:0;transform:translateY(20px)}to{opacity:1;transform:translateY(0)}}
+@keyframes cardIn{from{opacity:0;transform:translateY(10px)}to{opacity:1;transform:translateY(0)}}
+@keyframes toastIn{from{opacity:0;transform:translateX(20px)}to{opacity:1;transform:translateX(0)}}
+@keyframes pulse{0%,100%{opacity:1}50%{opacity:.4}}
+
+/* ── Login/Setup box ── */
+.auth-box{background:var(--surface);border:1px solid var(--border);border-radius:16px;padding:40px;width:100%;max-width:400px;box-shadow:var(--shadow-lg);animation:fadeUp .3s ease}
+.auth-box h2{font-size:1rem;font-weight:700;margin-bottom:4px}
+.auth-sub{color:var(--muted);font-size:.8rem;margin-bottom:24px;line-height:1.5}
+.auth-logo{display:flex;align-items:center;gap:10px;font-size:1.15rem;font-weight:800;letter-spacing:-.4px;margin-bottom:28px}
+.logo-mark{width:32px;height:32px;border-radius:7px;background:var(--accent);color:#fff;display:flex;align-items:center;justify-content:center;font-size:.8rem;font-weight:800}
+.big-icon{font-size:2rem;display:block;margin-bottom:14px}
+.form-row{margin-bottom:14px}
+.form-row label{display:block;font-weight:600;font-size:.75rem;margin-bottom:5px;color:var(--text2)}
+.pw-wrap{position:relative}
+.pw-wrap input{width:100%;padding:10px 40px 10px 14px;border:1px solid var(--border);border-radius:8px;font-family:inherit;font-size:.85rem;background:var(--bg);color:var(--text);outline:none;transition:border .2s}
+.pw-wrap input:focus{border-color:var(--accent)}
+.plain-input{width:100%;padding:10px 14px;border:1px solid var(--border);border-radius:8px;font-family:inherit;font-size:.85rem;background:var(--bg);color:var(--text);outline:none;transition:border .2s}
+.plain-input:focus{border-color:var(--accent)}
+.pw-eye{position:absolute;right:10px;top:50%;transform:translateY(-50%);background:none;border:none;cursor:pointer;color:var(--muted);font-size:.85rem;padding:4px;line-height:1}
+.pw-eye:hover{color:var(--text)}
+.pw-bar{height:3px;border-radius:2px;margin-top:5px;transition:all .3s;background:var(--border);width:0}
+.pw-bar.weak{background:#ef4444;width:33%}.pw-bar.fair{background:#f59e0b;width:66%}.pw-bar.strong{background:#22c55e;width:100%}
+.pw-bar-lbl{font-family:'JetBrains Mono',monospace;font-size:.65rem;color:var(--muted);margin-top:2px}
+.auth-err{background:rgba(200,75,49,.08);border:1px solid rgba(200,75,49,.25);border-radius:8px;padding:9px 12px;font-size:.78rem;color:var(--accent);margin-bottom:14px;display:none}
+.auth-err.show{display:block}
+.btn-primary{width:100%;padding:11px;background:var(--accent);color:#fff;border:none;border-radius:8px;font-family:inherit;font-weight:700;font-size:.88rem;cursor:pointer;transition:all .2s;margin-top:4px}
+.btn-primary:hover{background:#b03e28;transform:translateY(-1px)}.btn-primary:disabled{opacity:.5;pointer-events:none}
+.btn-ghost{width:100%;padding:9px;background:none;border:1px solid var(--border);border-radius:8px;font-family:inherit;font-size:.82rem;color:var(--muted);cursor:pointer;margin-top:8px;transition:all .15s}
+.btn-ghost:hover{border-color:var(--border2);color:var(--text2)}
+.attempt-note{font-family:'JetBrains Mono',monospace;font-size:.68rem;color:var(--muted);text-align:center;margin-top:10px;min-height:16px}
+.setup-note{font-family:'JetBrains Mono',monospace;font-size:.68rem;color:var(--muted);background:var(--tag-bg);border-radius:8px;padding:10px 12px;margin-top:12px;line-height:1.7}
+.step-bar{display:flex;gap:6px;margin-bottom:22px}
+.step-dot{flex:1;height:3px;border-radius:2px;background:var(--border)}.step-dot.on{background:var(--accent)}
+
+/* ══ HEADER ══ */
+header{height:var(--header-h);background:var(--surface);border-bottom:1px solid var(--border);display:flex;align-items:center;justify-content:space-between;padding:0 28px;position:sticky;top:0;z-index:100}
+.h-logo{display:flex;align-items:center;gap:10px;font-weight:800;font-size:1rem;letter-spacing:-.3px}
+.h-logo-mark{width:28px;height:28px;border-radius:6px;background:var(--accent);color:#fff;display:flex;align-items:center;justify-content:center;font-size:.75rem;font-weight:800}
+.h-nav{display:flex;align-items:center;gap:4px}
+.nav-btn{padding:6px 14px;border-radius:6px;cursor:pointer;font-weight:600;font-size:.82rem;color:var(--text2);transition:all .15s;border:none;background:none;font-family:inherit}
+.nav-btn:hover{background:var(--tag-bg);color:var(--text)}.nav-btn.active{background:var(--text);color:#fff}
+.h-right{display:flex;align-items:center;gap:10px}
+.user-pill{display:flex;align-items:center;gap:7px;padding:5px 12px 5px 5px;background:var(--tag-bg);border-radius:20px}
+.u-avatar{width:26px;height:26px;border-radius:50%;color:#fff;display:flex;align-items:center;justify-content:center;font-size:.7rem;font-weight:700}
+.u-name{font-weight:600;font-size:.78rem}
+.role-badge{font-size:.65rem;font-weight:700;text-transform:uppercase;letter-spacing:1px;padding:2px 7px;border-radius:10px}
+.role-badge.admin{background:rgba(200,75,49,.12);color:var(--accent)}.role-badge.viewer{background:rgba(107,114,128,.12);color:#6b7280}
+.admin-ind{display:none;align-items:center;gap:6px;padding:4px 12px;background:rgba(200,75,49,.08);border:1px solid rgba(200,75,49,.2);border-radius:20px;font-size:.72rem;font-weight:700;color:var(--accent)}
+.admin-ind.on{display:flex}
+.admin-dot{width:6px;height:6px;border-radius:50%;background:var(--accent);animation:pulse 2s infinite}
+.btn-hdr{padding:6px 14px;border:1px solid var(--border);background:none;border-radius:6px;cursor:pointer;font-family:inherit;font-size:.75rem;color:var(--muted);transition:all .15s;display:flex;align-items:center;gap:5px}
+.btn-hdr:hover{border-color:var(--accent);color:var(--accent)}
+.btn-hdr.danger{border-color:rgba(200,75,49,.3);color:var(--accent)}.btn-hdr.danger:hover{background:rgba(200,75,49,.06)}
+
+/* ══ LAYOUT ══ */
+.layout{display:flex;flex:1;overflow:hidden}
+aside{width:220px;flex-shrink:0;border-right:1px solid var(--border);background:var(--surface);padding:20px 0;overflow-y:auto;height:calc(100vh - var(--header-h));position:sticky;top:var(--header-h)}
+.sb-section{margin-bottom:24px}
+.sb-label{font-family:'JetBrains Mono',monospace;font-size:.65rem;text-transform:uppercase;letter-spacing:2px;color:var(--muted);padding:0 18px;margin-bottom:8px;display:flex;align-items:center;justify-content:space-between}
+.fi{display:flex;align-items:center;justify-content:space-between;padding:7px 18px;cursor:pointer;transition:all .15s;border:none;background:none;width:100%;text-align:left;font-family:inherit;font-size:.82rem;color:var(--text2)}
+.fi:hover{background:var(--tag-bg);color:var(--text)}.fi.active{background:var(--tag-bg);color:var(--text);font-weight:600}
+.fc{background:var(--tag-bg);color:var(--muted);font-size:.7rem;padding:1px 7px;border-radius:10px;font-family:'JetBrains Mono',monospace}
+.fi.active .fc{background:var(--text);color:#fff}
+.sb-tags{padding:0 14px}
+.tag-pill{display:inline-flex;align-items:center;padding:4px 10px;border:1px solid var(--border);border-radius:20px;cursor:pointer;margin:3px;font-size:.75rem;font-weight:500;transition:all .15s;background:var(--surface);color:var(--text2)}
+.tag-pill:hover{border-color:var(--accent);color:var(--accent)}.tag-pill.active{border-color:var(--text);background:var(--text);color:#fff}
+.tag-add-btn{display:inline-flex;align-items:center;gap:5px;padding:4px 10px;border:1px dashed var(--border2);border-radius:20px;cursor:pointer;margin:3px;font-size:.75rem;color:var(--muted);transition:all .15s;background:none;font-family:inherit}
+.tag-add-btn:hover{border-color:var(--accent);color:var(--accent)}
+
+/* ══ CONTENT ══ */
+.content{flex:1;overflow-y:auto;height:calc(100vh - var(--header-h));padding:28px 32px}
+.ch{display:flex;align-items:flex-start;justify-content:space-between;margin-bottom:6px}
+.ch h1{font-size:1.5rem;font-weight:800;letter-spacing:-.4px}
+.ch p{color:var(--muted);font-size:.82rem;margin-top:4px}
+.toolbar{display:flex;align-items:center;gap:10px;margin:16px 0 24px;flex-wrap:wrap}
+.search-box{flex:1;min-width:200px;max-width:340px;display:flex;align-items:center;gap:8px;background:var(--surface);border:1px solid var(--border);border-radius:8px;padding:8px 14px;transition:border .2s}
+.search-box:focus-within{border-color:var(--accent)}.search-box input{border:none;background:none;font-family:inherit;font-size:.85rem;color:var(--text);outline:none;flex:1}
+.sort-sel{padding:8px 14px;border:1px solid var(--border);border-radius:8px;background:var(--surface);font-family:inherit;font-size:.82rem;color:var(--text);cursor:pointer;outline:none}
+.view-toggle{display:flex;border:1px solid var(--border);border-radius:8px;overflow:hidden}
+.vb{padding:8px 12px;border:none;background:var(--surface);cursor:pointer;font-size:.9rem;transition:all .15s;color:var(--muted)}
+.vb.active{background:var(--text);color:#fff}
+.btn-upload{display:flex;align-items:center;gap:6px;padding:8px 18px;background:var(--accent);color:#fff;border:none;border-radius:8px;cursor:pointer;font-family:inherit;font-weight:700;font-size:.82rem;transition:all .2s;white-space:nowrap}
+.btn-upload:hover{background:#b03e28;transform:translateY(-1px);box-shadow:0 4px 16px rgba(200,75,49,.25)}
+.results-info{font-family:'JetBrains Mono',monospace;font-size:.72rem;color:var(--muted);margin-bottom:16px}
+
+/* ══ CARDS ══ */
+.cards-grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(290px,1fr));gap:20px}
+.cards-list{display:flex;flex-direction:column;gap:12px}
+.doc-card{background:var(--card);border:1px solid var(--border);border-radius:12px;overflow:hidden;transition:all .2s;cursor:pointer;animation:cardIn .3s ease both}
+.doc-card:hover{box-shadow:var(--shadow-lg);transform:translateY(-3px);border-color:var(--border2)}
+.card-thumb{height:160px;display:flex;align-items:center;justify-content:center;position:relative;overflow:hidden}
+.card-thumb-icon{font-size:3.5rem;opacity:.85}
+.card-thumb-ov{position:absolute;inset:0;background:rgba(0,0,0,0);display:flex;align-items:center;justify-content:center;gap:10px;transition:all .2s}
+.doc-card:hover .card-thumb-ov{background:rgba(0,0,0,.35)}
+.taction{display:flex;align-items:center;gap:5px;padding:7px 14px;background:rgba(255,255,255,.95);border-radius:6px;border:none;cursor:pointer;font-family:inherit;font-size:.78rem;font-weight:600;color:var(--text);transform:translateY(10px);opacity:0;transition:all .2s}
+.doc-card:hover .taction{opacity:1;transform:translateY(0)}.taction:hover{background:#fff;box-shadow:0 2px 8px rgba(0,0,0,.15)}
+.card-body{padding:16px}
+.card-tags{display:flex;gap:5px;flex-wrap:wrap;margin-bottom:10px}
+.ctag{font-size:.68rem;font-weight:600;padding:2px 8px;border-radius:10px;border:1px solid var(--border);color:var(--text2);background:var(--tag-bg)}
+.card-title{font-size:.95rem;font-weight:700;margin-bottom:6px;line-height:1.3}
+.card-desc{font-size:.78rem;color:var(--muted);line-height:1.6;display:-webkit-box;-webkit-line-clamp:3;-webkit-box-orient:vertical;overflow:hidden}
+.card-footer{display:flex;align-items:center;justify-content:space-between;padding:12px 16px;border-top:1px solid var(--border);background:var(--bg)}
+.card-meta{font-family:'JetBrains Mono',monospace;font-size:.68rem;color:var(--muted)}
+.card-acts{display:flex;gap:6px}
+.btn-sm{padding:5px 10px;border:1px solid var(--border);border-radius:6px;background:var(--surface);cursor:pointer;font-family:inherit;font-size:.72rem;font-weight:600;color:var(--text2);transition:all .15s;display:flex;align-items:center;gap:4px}
+.btn-sm:hover{border-color:var(--accent);color:var(--accent)}.btn-sm.danger:hover{border-color:#dc2626;color:#dc2626}
+.btn-sm.primary{background:var(--text);color:#fff;border-color:var(--text)}.btn-sm.primary:hover{background:var(--accent);border-color:var(--accent);color:#fff}
+.list-card{background:var(--card);border:1px solid var(--border);border-radius:10px;display:flex;align-items:center;gap:16px;padding:14px 20px;transition:all .2s;cursor:pointer;animation:cardIn .3s ease both}
+.list-card:hover{box-shadow:var(--shadow);border-color:var(--border2)}
+.list-icon{width:48px;height:48px;border-radius:8px;display:flex;align-items:center;justify-content:center;font-size:1.5rem;flex-shrink:0}
+.list-body{flex:1;min-width:0}.list-title{font-weight:700;font-size:.88rem;margin-bottom:4px}.list-desc{font-size:.75rem;color:var(--muted);white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.list-tags{display:flex;gap:5px;flex-wrap:wrap;margin-top:6px}.list-right{display:flex;align-items:center;gap:8px;flex-shrink:0}
+.empty-state{text-align:center;padding:80px 20px;color:var(--muted)}
+.empty-state .big{font-size:3rem;margin-bottom:16px;opacity:.5}.empty-state h3{font-size:1rem;font-weight:700;color:var(--text2);margin-bottom:8px}.empty-state p{font-size:.82rem;line-height:1.6}
+
+/* ══ MODALS ══ */
+.modal-wrap{position:fixed;inset:0;background:rgba(0,0,0,.5);backdrop-filter:blur(4px);z-index:500;display:none;align-items:center;justify-content:center;padding:20px}
+.modal-wrap.show{display:flex;animation:fadeIn .2s ease}
+.modal{background:var(--surface);border-radius:16px;width:100%;max-width:600px;max-height:90vh;overflow-y:auto;box-shadow:var(--shadow-lg);animation:slideUp .25s ease}
+.modal-hdr{display:flex;align-items:center;justify-content:space-between;padding:20px 24px;border-bottom:1px solid var(--border);position:sticky;top:0;background:var(--surface);z-index:1}
+.modal-hdr h2{font-size:1rem;font-weight:700}
+.modal-x{width:30px;height:30px;border:none;background:var(--tag-bg);border-radius:6px;cursor:pointer;font-size:1rem;display:flex;align-items:center;justify-content:center;transition:all .15s}
+.modal-x:hover{background:var(--border2)}
+.modal-body{padding:24px}
+.drop-zone{border:2px dashed var(--border2);border-radius:12px;padding:40px 20px;text-align:center;cursor:pointer;transition:all .2s;position:relative;margin-bottom:20px;background:var(--bg)}
+.drop-zone:hover,.drop-zone.dragover{border-color:var(--accent);background:rgba(200,75,49,.03)}
+.drop-zone input{position:absolute;inset:0;opacity:0;cursor:pointer;width:100%;height:100%}
+.drop-zone h4{font-size:.9rem;font-weight:700;margin-bottom:4px}.drop-zone p{font-size:.75rem;color:var(--muted)}
+.ftypes{display:flex;gap:6px;justify-content:center;flex-wrap:wrap;margin-top:12px}
+.ftype{font-family:'JetBrains Mono',monospace;font-size:.65rem;padding:2px 8px;border:1px solid var(--border);border-radius:4px;color:var(--muted);background:var(--surface)}
+.sel-file{display:none;align-items:center;gap:10px;padding:10px 14px;background:var(--bg);border:1px solid var(--border);border-radius:8px;margin-bottom:16px}
+.sel-file.show{display:flex}.sel-icon{font-size:1.4rem}.sel-meta{flex:1}
+.sel-name{font-weight:600;font-size:.82rem}.sel-size{font-family:'JetBrains Mono',monospace;font-size:.7rem;color:var(--muted)}
+.sel-rm{border:none;background:none;cursor:pointer;color:var(--muted);font-size:.9rem;transition:color .15s}.sel-rm:hover{color:#dc2626}
+.mf{margin-bottom:18px}.mf label{display:block;font-weight:600;font-size:.78rem;margin-bottom:6px}
+.mf input,.mf textarea{width:100%;padding:10px 14px;border:1px solid var(--border);border-radius:8px;font-family:inherit;font-size:.85rem;background:var(--bg);color:var(--text);outline:none;transition:border .2s;resize:vertical}
+.mf input:focus,.mf textarea:focus{border-color:var(--accent)}.mf textarea{min-height:80px}
+.char-c{text-align:right;font-family:'JetBrains Mono',monospace;font-size:.68rem;color:var(--muted);margin-top:4px}
+.tag-sel{display:flex;flex-wrap:wrap;gap:6px}
+.tag-opt{padding:4px 12px;border:1px solid var(--border);border-radius:20px;cursor:pointer;font-size:.75rem;font-weight:500;transition:all .15s;background:var(--surface);color:var(--text2)}
+.tag-opt:hover{border-color:var(--accent);color:var(--accent)}.tag-opt.sel{border-color:var(--text);background:var(--text);color:#fff}
+.modal-ftr{padding:16px 24px;border-top:1px solid var(--border);display:flex;gap:10px;justify-content:flex-end;position:sticky;bottom:0;background:var(--surface)}
+.btn-cancel{padding:10px 20px;border:1px solid var(--border);border-radius:8px;background:none;cursor:pointer;font-family:inherit;font-size:.85rem;font-weight:600;color:var(--text2);transition:all .15s}
+.btn-submit{padding:10px 24px;background:var(--accent);color:#fff;border:none;border-radius:8px;cursor:pointer;font-family:inherit;font-size:.85rem;font-weight:700;transition:all .2s;display:flex;align-items:center;gap:6px}
+.btn-submit:hover{background:#b03e28}.btn-submit:disabled{opacity:.5;pointer-events:none}
+
+/* Preview */
+.prev-modal{background:var(--surface);border-radius:16px;width:100%;max-width:800px;max-height:90vh;overflow-y:auto;box-shadow:var(--shadow-lg);animation:slideUp .25s ease}
+.prev-banner{min-height:200px;display:flex;align-items:center;justify-content:center;font-size:5rem;overflow:hidden}
+.prev-info{padding:24px}
+.prev-info h2{font-size:1.3rem;font-weight:800;margin-bottom:8px;letter-spacing:-.3px}
+.prev-desc{color:var(--text2);line-height:1.7;font-size:.88rem;margin-bottom:18px}
+.prev-tags{display:flex;flex-wrap:wrap;gap:6px;margin-bottom:18px}
+.prev-meta{display:grid;grid-template-columns:1fr 1fr;gap:12px;margin-bottom:20px;padding:16px;background:var(--bg);border-radius:10px}
+.pm-item .pm-lbl{font-family:'JetBrains Mono',monospace;font-size:.65rem;text-transform:uppercase;letter-spacing:1px;color:var(--muted);margin-bottom:3px}
+.pm-item .pm-val{font-size:.85rem;font-weight:600}
+.prev-acts{display:flex;gap:10px;flex-wrap:wrap}
+.btn-pa{display:flex;align-items:center;gap:7px;padding:10px 20px;border-radius:8px;cursor:pointer;font-family:inherit;font-size:.85rem;font-weight:600;transition:all .2s;border:none}
+.btn-pa.primary{background:var(--accent);color:#fff}.btn-pa.primary:hover{background:#b03e28;transform:translateY(-1px)}
+.btn-pa.secondary{background:var(--tag-bg);color:var(--text);border:1px solid var(--border)}.btn-pa.secondary:hover{border-color:var(--accent);color:var(--accent)}
+.dio-wrap{margin:0 24px 24px;border:1px solid var(--border);border-radius:10px;overflow:hidden}
+.dio-wrap iframe{width:100%;height:420px;border:none;display:block}
+
+/* Tag manager */
+.tm-modal{background:var(--surface);border-radius:16px;width:100%;max-width:480px;box-shadow:var(--shadow-lg);animation:slideUp .25s ease}
+.tm-list{padding:0 24px 12px}
+.tm-row{display:flex;align-items:center;gap:10px;padding:10px 0;border-bottom:1px solid var(--border)}
+.tm-row:last-child{border:none}.tm-name{flex:1;font-size:.85rem;font-weight:500}.tm-cnt{font-family:'JetBrains Mono',monospace;font-size:.7rem;color:var(--muted)}
+.tm-del{border:none;background:none;cursor:pointer;color:var(--muted);font-size:.9rem;transition:color .15s}.tm-del:hover{color:#dc2626}
+.tm-add{display:flex;gap:8px;padding:16px 24px;border-top:1px solid var(--border)}
+.tm-add input{flex:1;padding:8px 12px;border:1px solid var(--border);border-radius:8px;font-family:inherit;font-size:.82rem;background:var(--bg);color:var(--text);outline:none}
+.tm-add input:focus{border-color:var(--accent)}
+.tm-add-btn{padding:8px 14px;background:var(--accent);color:#fff;border:none;border-radius:8px;cursor:pointer;font-family:inherit;font-size:.82rem;font-weight:700}
+
+/* Admin panel */
+.admin-panel{padding:28px 32px}
+.stats-grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(175px,1fr));gap:16px;margin-bottom:28px}
+.stat-card{background:var(--surface);border:1px solid var(--border);border-radius:12px;padding:20px;transition:all .2s}
+.stat-card:hover{box-shadow:var(--shadow);transform:translateY(-2px)}
+.stat-num{font-size:2rem;font-weight:800;letter-spacing:-1px;margin-bottom:4px}.stat-lbl{font-size:.78rem;color:var(--muted)}.stat-ico{font-size:1.5rem;margin-bottom:8px}
+
+/* Security card */
+.sec-card{background:var(--surface);border:1px solid var(--border);border-radius:12px;padding:22px;margin-bottom:24px}
+.sec-card h3{font-size:.88rem;font-weight:700;margin-bottom:14px}
+.sec-grid{display:grid;grid-template-columns:1fr 1fr;gap:10px;margin-bottom:14px}
+.sec-item{padding:11px;background:var(--bg);border-radius:8px}
+.sec-lbl{font-family:'JetBrains Mono',monospace;font-size:.63rem;text-transform:uppercase;letter-spacing:1px;color:var(--muted);margin-bottom:2px}
+.sec-val{font-size:.8rem;font-weight:600}.sec-val.ok{color:var(--accent2)}.sec-val.warn{color:#d97706}
+
+.docs-table{background:var(--surface);border:1px solid var(--border);border-radius:12px;overflow:hidden}
+.t-header{display:grid;grid-template-columns:2fr 1fr 1fr 120px;gap:12px;padding:12px 20px;background:var(--bg);border-bottom:1px solid var(--border);font-family:'JetBrains Mono',monospace;font-size:.68rem;text-transform:uppercase;letter-spacing:1px;color:var(--muted)}
+.t-row{display:grid;grid-template-columns:2fr 1fr 1fr 120px;gap:12px;padding:14px 20px;border-bottom:1px solid var(--border);align-items:center;transition:background .15s}
+.t-row:last-child{border:none}.t-row:hover{background:var(--bg)}
+.t-title{font-weight:600;font-size:.85rem}.t-meta{font-size:.78rem;color:var(--muted)}.t-acts{display:flex;gap:6px}
+
+/* Toast */
+#toasts{position:fixed;bottom:24px;right:24px;z-index:9998;display:flex;flex-direction:column;gap:8px}
+.toast{display:flex;align-items:center;gap:10px;padding:12px 18px;border-radius:10px;color:#fff;font-size:.82rem;font-weight:600;box-shadow:0 4px 20px rgba(0,0,0,.2);animation:toastIn .3s ease;min-width:240px}
+.toast.success{background:#1e6b3c}.toast.error{background:#dc2626}.toast.info{background:#1a56a0}.toast.warn{background:#b45309}
+/* ══ THUMBNAILS ══ */
+.thumb-upload-row{display:flex;gap:16px;align-items:flex-start}
+.thumb-preview-box{width:180px;height:112px;flex-shrink:0;border:1px solid var(--border);border-radius:10px;overflow:hidden;background:var(--bg);display:flex;align-items:center;justify-content:center;position:relative}
+.thumb-placeholder{display:flex;flex-direction:column;align-items:center;gap:6px}
+.thumb-preview-box img{width:100%;height:100%;object-fit:cover;border-radius:9px}
+.card-thumb-img{width:100%;height:100%;object-fit:cover}
+.thumb-upload-actions{flex:1;display:flex;flex-direction:column;gap:8px}
+.btn-thumb-upload{display:inline-flex;align-items:center;gap:6px;padding:8px 14px;border:1px solid var(--border);border-radius:8px;background:var(--surface);font-family:inherit;font-size:.78rem;font-weight:600;color:var(--text2);cursor:pointer;transition:all .15s}
+.btn-thumb-upload:hover{border-color:var(--accent);color:var(--accent)}
+.btn-thumb-clear{display:inline-flex;align-items:center;gap:5px;padding:6px 12px;border:1px solid var(--border);border-radius:8px;background:none;font-family:inherit;font-size:.75rem;color:var(--muted);cursor:pointer;transition:all .15s}
+.btn-thumb-clear:hover{border-color:#dc2626;color:#dc2626}
+/* Styled SVG thumbnails on cards */
+.card-thumb-svg{width:100%;height:100%;display:flex;align-items:center;justify-content:center;position:relative}
+/* Preview modal image thumb */
+.prev-banner img{width:100%;height:100%;object-fit:cover}
+.hidden{display:none!important}
+</style>
+</head>
+<body>
+
+<!-- ══════════ FIRST-RUN SETUP ══════════ -->
+<div class="overlay" id="setup-overlay">
+  <div class="auth-box" style="max-width:430px">
+    <div class="step-bar"><div class="step-dot on"></div><div class="step-dot"></div><div class="step-dot"></div></div>
+    <div class="auth-logo"><div class="logo-mark">DV</div>DocVault</div>
+    <span class="big-icon">🔐</span>
+    <h2>One-time Setup</h2>
+    <p class="auth-sub">Set an admin password and connect your GitHub repo. Your PAT is encrypted and stored locally — never sent anywhere except GitHub's API.</p>
+    <div class="auth-err" id="setup-err"></div>
+    <div class="form-row">
+      <label>Admin Password</label>
+      <div class="pw-wrap">
+        <input type="password" id="s-pw1" placeholder="At least 8 characters" oninput="pwStrength(this.value,'s-bar','s-lbl')"/>
+        <button class="pw-eye" onclick="eyeToggle('s-pw1',this)">👁</button>
+      </div>
+      <div class="pw-bar" id="s-bar"></div>
+      <div class="pw-bar-lbl" id="s-lbl"></div>
+    </div>
+    <div class="form-row">
+      <label>Confirm Password</label>
+      <div class="pw-wrap">
+        <input type="password" id="s-pw2" placeholder="Repeat password"/>
+        <button class="pw-eye" onclick="eyeToggle('s-pw2',this)">👁</button>
+      </div>
+    </div>
+    <div class="form-row">
+      <label>GitHub Personal Access Token (PAT)
+        <a href="https://github.com/settings/tokens/new?scopes=repo&description=DocVault" target="_blank" style="color:var(--accent);font-size:.7rem;margin-left:6px;font-weight:400">Generate one ↗</a>
+      </label>
+      <div class="pw-wrap">
+        <input type="password" id="s-pat" placeholder="ghp_xxxxxxxxxxxxxxxxxxxx"/>
+        <button class="pw-eye" onclick="eyeToggle('s-pat',this)">👁</button>
+      </div>
+      <div style="font-size:.68rem;color:var(--muted);margin-top:4px">Needs <code style="background:var(--tag-bg);padding:1px 4px;border-radius:3px">repo</code> scope · encrypted with your password · never stored plaintext</div>
+    </div>
+    <button class="btn-primary" id="setup-btn" onclick="doSetup()">Save & Open Gallery →</button>
+    <div class="setup-note">🔒 Password: PBKDF2 · SHA-256 · 200,000 iterations<br/>🔑 PAT: AES-256-GCM encrypted · stored in localStorage<br/>⚠️ Not recoverable — clear site data to reset</div>
+  </div>
+</div>
+
+<!-- ══════════ ADMIN LOGIN ══════════ -->
+<div class="overlay" id="login-overlay">
+  <div class="auth-box">
+    <div class="auth-logo"><div class="logo-mark">DV</div>DocVault</div>
+    <span class="big-icon">🔑</span>
+    <h2>Admin Sign In</h2>
+    <p class="auth-sub">Enter your admin password to access upload and management features. Everyone else browses as Viewer automatically.</p>
+    <div class="auth-err" id="login-err"></div>
+    <div class="form-row">
+      <label>Admin Password</label>
+      <div class="pw-wrap">
+        <input type="password" id="l-pw" placeholder="Admin password" onkeydown="if(event.key==='Enter')doLogin()"/>
+        <button class="pw-eye" onclick="eyeToggle('l-pw',this)">👁</button>
+      </div>
+    </div>
+    <button class="btn-primary" id="login-btn" onclick="doLogin()">Sign In as Admin</button>
+    <button class="btn-ghost" onclick="closeLogin()">Cancel — continue as Viewer</button>
+    <div class="attempt-note" id="attempt-note"></div>
+  </div>
+</div>
+
+<!-- ══════════ CHANGE PASSWORD ══════════ -->
+<div class="overlay" id="cpw-overlay">
+  <div class="auth-box">
+    <h2 style="margin-bottom:4px">🔄 Change Admin Password</h2>
+    <p class="auth-sub">Verify your current password, then set a new one.</p>
+    <div class="auth-err" id="cpw-err"></div>
+    <div class="form-row">
+      <label>Current Password</label>
+      <div class="pw-wrap">
+        <input type="password" id="c-cur" placeholder="Current password"/>
+        <button class="pw-eye" onclick="eyeToggle('c-cur',this)">👁</button>
+      </div>
+    </div>
+    <div class="form-row">
+      <label>New Password</label>
+      <div class="pw-wrap">
+        <input type="password" id="c-new1" placeholder="At least 8 characters" oninput="pwStrength(this.value,'c-bar','c-lbl')"/>
+        <button class="pw-eye" onclick="eyeToggle('c-new1',this)">👁</button>
+      </div>
+      <div class="pw-bar" id="c-bar"></div>
+      <div class="pw-bar-lbl" id="c-lbl"></div>
+    </div>
+    <div class="form-row">
+      <label>Confirm New Password</label>
+      <div class="pw-wrap">
+        <input type="password" id="c-new2" placeholder="Repeat new password"/>
+        <button class="pw-eye" onclick="eyeToggle('c-new2',this)">👁</button>
+      </div>
+    </div>
+    <button class="btn-primary" onclick="doChangePw()">Update Password</button>
+    <button class="btn-ghost" onclick="closeCpw()">Cancel</button>
+  </div>
+</div>
+
+<!-- ══════════ APP ══════════ -->
+<header>
+  <div class="h-logo"><div class="h-logo-mark">DV</div>DocVault</div>
+  <div class="h-nav">
+    <button class="nav-btn active" onclick="showView('gallery')" id="nav-gallery">Gallery</button>
+    <button class="nav-btn hidden" onclick="showView('admin')" id="nav-admin">Admin Panel</button>
+  </div>
+  <div class="h-right">
+    <div class="admin-ind" id="admin-ind"><div class="admin-dot"></div> Admin Mode</div>
+    <div class="user-pill">
+      <div class="u-avatar" id="u-av" style="background:#6b7280">V</div>
+      <span class="u-name" id="u-name">Viewer</span>
+      <span class="role-badge viewer" id="u-badge">viewer</span>
+    </div>
+    <button class="btn-hdr" id="btn-login" onclick="openLogin()">🔑 Admin Login</button>
+    <button class="btn-hdr danger hidden" id="btn-logout" onclick="doLogout()">Sign Out</button>
+  </div>
+</header>
+
+<div class="layout">
+  <aside id="sidebar">
+    <div class="sb-section">
+      <div class="sb-label">File Type</div>
+      <button class="fi active" onclick="fType('all')" id="ft-all">All Files <span class="fc" id="fc-all">0</span></button>
+      <button class="fi" onclick="fType('drawio')" id="ft-drawio">📐 draw.io <span class="fc" id="fc-drawio">0</span></button>
+      <button class="fi" onclick="fType('pptx')" id="ft-pptx">📊 PowerPoint <span class="fc" id="fc-pptx">0</span></button>
+      <button class="fi" onclick="fType('docx')" id="ft-docx">📝 Word Doc <span class="fc" id="fc-docx">0</span></button>
+      <button class="fi" onclick="fType('pdf')" id="ft-pdf">📄 PDF <span class="fc" id="fc-pdf">0</span></button>
+      <button class="fi" onclick="fType('other')" id="ft-other">📁 Other <span class="fc" id="fc-other">0</span></button>
+    </div>
+    <div class="sb-section">
+      <div class="sb-label">Tags
+        <button class="tag-add-btn hidden" id="manage-tags-btn" onclick="openTagMgr()" style="font-size:.6rem;padding:1px 6px;margin:0">⚙</button>
+      </div>
+      <div class="sb-tags" id="sb-tags"></div>
+    </div>
+  </aside>
+
+  <!-- GALLERY -->
+  <div class="content" id="gallery-view">
+    <div class="ch">
+      <div><h1>Document Gallery</h1><p>Browse, preview, and download shared documents</p></div>
+      <button class="btn-upload hidden" id="upload-btn" onclick="openUpload()">+ Upload Document</button>
+    </div>
+    <div class="toolbar">
+      <div class="search-box">
+        <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="11" cy="11" r="8"/><path d="m21 21-4.35-4.35"/></svg>
+        <input type="text" id="search-inp" placeholder="Search documents..." oninput="renderCards()"/>
+      </div>
+      <select class="sort-sel" id="sort-sel" onchange="renderCards()">
+        <option value="newest">Newest first</option><option value="oldest">Oldest first</option>
+        <option value="name">Name A–Z</option><option value="type">By type</option>
+      </select>
+      <div class="view-toggle">
+        <button class="vb active" onclick="setVM('grid')" id="vb-grid">⊞</button>
+        <button class="vb" onclick="setVM('list')" id="vb-list">☰</button>
+      </div>
+    </div>
+    <div class="results-info" id="res-info"></div>
+    <div id="cards"></div>
+  </div>
+
+  <!-- ADMIN PANEL -->
+  <div class="content admin-panel hidden" id="admin-view">
+    <div class="ch" style="margin-bottom:24px">
+      <div><h1>Admin Panel</h1><p>Manage documents, tags, and security settings</p></div>
+      <button class="btn-upload" onclick="openUpload()">+ Upload Document</button>
+    </div>
+    <div class="sec-card">
+      <h3>🔐 Security Status</h3>
+      <div class="sec-grid" id="sec-grid"></div>
+      <button class="btn-sm" onclick="openCpw()">🔄 Change Admin Password</button>
+    </div>
+    <div class="stats-grid" id="stats-grid"></div>
+    <h3 style="font-size:.88rem;font-weight:700;margin-bottom:12px;color:var(--text2)">All Documents</h3>
+    <div class="docs-table">
+      <div class="t-header"><div>Document</div><div>Type / Tags</div><div>Uploaded</div><div>Actions</div></div>
+      <div id="t-body"></div>
+    </div>
+  </div>
+</div>
+
+<!-- UPLOAD MODAL -->
+<div class="modal-wrap" id="upload-modal">
+  <div class="modal">
+    <div class="modal-hdr"><h2>Upload Document</h2><button class="modal-x" onclick="closeUpload()">✕</button></div>
+    <div class="modal-body">
+      <div class="drop-zone" id="drop-zone">
+        <input type="file" id="file-inp" accept=".drawio,.xml,.dio,.pptx,.ppt,.docx,.doc,.pdf,.png,.jpg,.jpeg,.svg,.xlsx,.xls" onchange="onFileSelect(event)"/>
+        <div style="font-size:2rem;margin-bottom:10px">📁</div>
+        <h4>Drop file here or click to browse</h4><p>Drag & drop your document</p>
+        <div class="ftypes"><span class="ftype">.drawio</span><span class="ftype">.pptx</span><span class="ftype">.docx</span><span class="ftype">.pdf</span><span class="ftype">.xlsx</span><span class="ftype">+ more</span></div>
+      </div>
+      <div class="sel-file" id="sel-file">
+        <span class="sel-icon" id="sel-ico">📄</span>
+        <div class="sel-meta"><div class="sel-name" id="sel-nm"></div><div class="sel-size" id="sel-sz"></div></div>
+        <button class="sel-rm" onclick="clearFile()">✕</button>
+      </div>
+      <div class="mf"><label>Document Title *</label><input type="text" id="doc-title" placeholder="Clear, descriptive title"/></div>
+      <div class="mf"><label>Description *</label><textarea id="doc-desc" placeholder="What is this document? Who should use it?" oninput="document.getElementById('cc').textContent=this.value.length"></textarea><div class="char-c"><span id="cc">0</span> / 500</div></div>
+      <div class="mf">
+        <label>Thumbnail <span style="color:var(--muted);font-weight:400">(optional — auto-generated if left blank)</span></label>
+        <div class="thumb-upload-row">
+          <div class="thumb-preview-box" id="thumb-preview-box">
+            <canvas id="thumb-canvas" width="240" height="150" style="display:none;border-radius:6px;width:100%;height:100%;object-fit:cover"></canvas>
+            <div class="thumb-placeholder" id="thumb-placeholder">
+              <span style="font-size:1.6rem" id="thumb-placeholder-icon">🖼️</span>
+              <span style="font-size:.72rem;color:var(--muted)">Auto preview</span>
+            </div>
+          </div>
+          <div class="thumb-upload-actions">
+            <label class="btn-thumb-upload">
+              📷 Upload image
+              <input type="file" id="thumb-inp" accept="image/*" style="display:none" onchange="onThumbSelect(event)"/>
+            </label>
+            <button class="btn-thumb-clear hidden" id="btn-thumb-clear" onclick="clearThumb()">✕ Remove</button>
+            <p style="font-size:.72rem;color:var(--muted);line-height:1.5;margin-top:6px">
+              For images: auto-generated ✓<br/>
+              For docs: upload a screenshot
+            </p>
+          </div>
+        </div>
+      </div>
+      <div class="mf"><label>Tags</label><div class="tag-sel" id="tag-sel"></div></div>
+    </div>
+    <div class="modal-ftr">
+      <button class="btn-cancel" onclick="closeUpload()">Cancel</button>
+      <button class="btn-submit" id="submit-btn" onclick="submitUpload()">↑ Upload Document</button>
+    </div>
+  </div>
+</div>
+
+<!-- PREVIEW MODAL -->
+<div class="modal-wrap" id="prev-modal">
+  <div class="prev-modal">
+    <div class="modal-hdr"><h2 id="prev-modal-title">Preview</h2><button class="modal-x" onclick="closePrev()">✕</button></div>
+    <div class="prev-banner" id="prev-banner"></div>
+    <div id="dio-container" class="hidden"><div class="dio-wrap"><iframe id="dio-frame" sandbox="allow-scripts allow-same-origin allow-popups allow-forms" allowfullscreen></iframe></div></div>
+    <div class="prev-info">
+      <div class="prev-tags" id="prev-tags"></div>
+      <h2 id="prev-title"></h2>
+      <p class="prev-desc" id="prev-desc"></p>
+      <div class="prev-meta" id="prev-meta"></div>
+      <div class="prev-acts" id="prev-acts"></div>
+    </div>
+  </div>
+</div>
+
+<!-- TAG MANAGER -->
+<div class="modal-wrap" id="tm-modal">
+  <div class="tm-modal">
+    <div class="modal-hdr"><h2>Manage Tags</h2><button class="modal-x" onclick="closeTM()">✕</button></div>
+    <div class="tm-list" id="tm-list"></div>
+    <div class="tm-add"><input type="text" id="tm-inp" placeholder="New tag name..." onkeydown="if(event.key==='Enter')addTag()"/><button class="tm-add-btn" onclick="addTag()">+ Add</button></div>
+  </div>
+</div>
+
+<!-- CONFIRM DELETE -->
+<div class="overlay" id="confirm-modal" style="z-index:10001">
+  <div class="auth-box" style="max-width:380px;text-align:center">
+    <div style="font-size:2.5rem;margin-bottom:12px">🗑️</div>
+    <h2 style="margin-bottom:8px">Delete Document?</h2>
+    <p class="auth-sub">You are about to permanently delete <strong id="confirm-doc-name"></strong>. This cannot be undone.</p>
+    <div style="display:flex;gap:10px;margin-top:4px">
+      <button class="btn-ghost" style="flex:1;margin:0" onclick="closeConfirm()">Cancel</button>
+      <button onclick="confirmDelete()" style="flex:1;padding:11px;background:#dc2626;color:#fff;border:none;border-radius:8px;font-family:inherit;font-weight:700;font-size:.88rem;cursor:pointer;transition:all .2s">Delete</button>
+    </div>
+  </div>
+</div>
+
+<div id="toasts"></div>
+
+<script>
+'use strict';
+// ══════════════════════════════════════════════
+// CRYPTO  —  Web Crypto API (browser built-in)
+// Password: PBKDF2 + SHA-256 + random salt
+// ══════════════════════════════════════════════
+const SK_HASH  = 'dv_pw';
+const SK_DOCS  = 'dv_docs';
+const SK_TAGS  = 'dv_tags';
+const SK_LOCK  = 'dv_lock';
+const ITERS    = 200_000;
+const MAX_ATT  = 5;
+const LOCK_MS  = 15 * 60 * 1000;
+
+const b2h = b => Array.from(new Uint8Array(b)).map(x=>x.toString(16).padStart(2,'0')).join('');
+const h2b = h => { const a=new Uint8Array(h.length/2); for(let i=0;i<h.length;i+=2)a[i/2]=parseInt(h.slice(i,i+2),16); return a.buffer; };
+
+async function deriveKey(pw, saltBuf) {
+  const key = await crypto.subtle.importKey('raw', new TextEncoder().encode(pw), 'PBKDF2', false, ['deriveBits']);
+  const bits = await crypto.subtle.deriveBits({ name:'PBKDF2', salt:saltBuf, iterations:ITERS, hash:'SHA-256' }, key, 256);
+  return b2h(bits);
+}
+
+async function savePw(pw) {
+  const salt = crypto.getRandomValues(new Uint8Array(32));
+  const hash = await deriveKey(pw, salt.buffer);
+  localStorage.setItem(SK_HASH, JSON.stringify({ salt:b2h(salt.buffer), hash, at:Date.now(), algo:'PBKDF2-SHA256', iters:ITERS }));
+}
+
+async function verifyPw(pw) {
+  const s = localStorage.getItem(SK_HASH);
+  if (!s) return false;
+  const { salt, hash } = JSON.parse(s);
+  const derived = await deriveKey(pw, h2b(salt));
+  return derived === hash;
+}
+
+const hasPw = () => !!localStorage.getItem(SK_HASH);
+
+// Lockout
+const getLock   = () => { try { return JSON.parse(localStorage.getItem(SK_LOCK))||{a:0,u:0}; } catch { return {a:0,u:0}; } };
+const saveLock  = o  => localStorage.setItem(SK_LOCK, JSON.stringify(o));
+const resetLock = () => saveLock({a:0,u:0});
+function failAttempt() {
+  const l = getLock(); l.a++;
+  if (l.a >= MAX_ATT) l.u = Date.now() + LOCK_MS;
+  saveLock(l); return l;
+}
+function lockedMins() {
+  const l = getLock();
+  if (l.u > Date.now()) return Math.ceil((l.u - Date.now()) / 60000);
+  return 0;
+}
+
+// ══════════════════════════════
+// STATE
+// ══════════════════════════════
+const S = {
+  role: 'viewer',
+  docs: [],
+  tags: ['Technical','Project Management','Templates','Architecture','Process','Reference','Reports','Design'],
+  typeFilter: 'all',
+  tagFilters: [],
+  vm: 'grid',
+  selFile: null,
+  selTags: [],
+  selThumb: null,
+  _pendingDelete: null,
+};
+
+// ══════════════════════════════
+// GITHUB API LAYER
+// ══════════════════════════════
+const GH_OWNER  = 'diggibyte';
+const GH_REPO   = 'docvault';
+const GH_BRANCH = 'main';
+const GH_FILE   = 'data/docs.json';
+const SK_PAT    = 'dv_pat'; // stores AES-GCM encrypted PAT
+
+// AES-GCM encrypt/decrypt using a key derived from the admin password hash
+// We use the stored hash bytes directly as key material (already high-entropy)
+async function aesKey() {
+  const stored = localStorage.getItem(SK_HASH);
+  if (!stored) return null;
+  const { hash } = JSON.parse(stored);
+  const raw = h2b(hash); // 32 bytes = 256-bit key
+  return crypto.subtle.importKey('raw', raw, { name:'AES-GCM' }, false, ['encrypt','decrypt']);
+}
+
+async function encryptPAT(pat) {
+  const key = await aesKey(); if (!key) return null;
+  const iv  = crypto.getRandomValues(new Uint8Array(12));
+  const enc = await crypto.subtle.encrypt(
+    { name:'AES-GCM', iv },
+    key,
+    new TextEncoder().encode(pat)
+  );
+  return b2h(iv.buffer) + ':' + b2h(enc);
+}
+
+async function decryptPAT() {
+  const stored = localStorage.getItem(SK_PAT); if (!stored) return null;
+  try {
+    const [ivHex, dataHex] = stored.split(':');
+    const key = await aesKey(); if (!key) return null;
+    const dec = await crypto.subtle.decrypt(
+      { name:'AES-GCM', iv: h2b(ivHex) },
+      key,
+      h2b(dataHex)
+    );
+    return new TextDecoder().decode(dec);
+  } catch { return null; }
+}
+
+async function savePAT(pat) {
+  const enc = await encryptPAT(pat);
+  if (enc) localStorage.setItem(SK_PAT, enc);
+}
+
+const hasPAT = () => !!localStorage.getItem(SK_PAT);
+
+// ── GitHub REST API helpers ──
+async function ghGet(path) {
+  const pat = await decryptPAT();
+  const headers = { 'Accept':'application/vnd.github+json' };
+  if (pat) headers['Authorization'] = `Bearer ${pat}`;
+  const r = await fetch(`https://api.github.com/repos/${GH_OWNER}/${GH_REPO}/contents/${path}?ref=${GH_BRANCH}`, { headers });
+  if (!r.ok) return null;
+  return r.json();
+}
+
+async function ghPut(path, content, message, sha) {
+  const pat = await decryptPAT(); if (!pat) throw new Error('No PAT');
+  const body = { message, content: btoa(unescape(encodeURIComponent(content))), branch: GH_BRANCH };
+  if (sha) body.sha = sha;
+  const r = await fetch(`https://api.github.com/repos/${GH_OWNER}/${GH_REPO}/contents/${path}`, {
+    method: 'PUT',
+    headers: { 'Authorization':`Bearer ${pat}`, 'Accept':'application/vnd.github+json', 'Content-Type':'application/json' },
+    body: JSON.stringify(body),
+  });
+  if (!r.ok) { const e = await r.json(); throw new Error(e.message || r.status); }
+  return r.json();
+}
+
+async function ghDelete(path, message, sha) {
+  const pat = await decryptPAT(); if (!pat) throw new Error('No PAT');
+  const r = await fetch(`https://api.github.com/repos/${GH_OWNER}/${GH_REPO}/contents/${path}`, {
+    method: 'DELETE',
+    headers: { 'Authorization':`Bearer ${pat}`, 'Accept':'application/vnd.github+json', 'Content-Type':'application/json' },
+    body: JSON.stringify({ message, sha, branch: GH_BRANCH }),
+  });
+  if (!r.ok) { const e = await r.json(); throw new Error(e.message || r.status); }
+  return r.json();
+}
+
+// ── SHA cache so we don't fetch it on every write ──
+const _shaCache = {};
+
+async function getSHA(path) {
+  if (_shaCache[path]) return _shaCache[path];
+  const f = await ghGet(path);
+  if (f?.sha) _shaCache[path] = f.sha;
+  return f?.sha || null;
+}
+
+// ── Load docs.json from GitHub (public, no PAT needed for read) ──
+async function loadData() {
+  try {
+    // Use raw URL for fastest public read (CDN cached, no auth needed)
+    const url = `https://raw.githubusercontent.com/${GH_OWNER}/${GH_REPO}/${GH_BRANCH}/${GH_FILE}?_=${Date.now()}`;
+    const r = await fetch(url);
+    if (!r.ok) { S.docs=[]; return; }
+    const data = await r.json();
+    S.docs = data.docs || [];
+    S.tags = data.tags || S.tags;
+  } catch { S.docs = []; }
+}
+
+// ── Save docs.json to GitHub (requires PAT) ──
+async function saveData() {
+  const content = JSON.stringify({ docs: S.docs, tags: S.tags }, null, 2);
+  // Get current SHA (needed for updates)
+  const sha = await getSHA(GH_FILE);
+  const result = await ghPut(GH_FILE, content, `Update gallery data [${new Date().toISOString()}]`, sha);
+  if (result?.content?.sha) _shaCache[GH_FILE] = result.content.sha;
+}
+
+// ── Save a binary file to GitHub under data/files/ ──
+async function saveFile(docId, base64DataUrl) {
+  // base64DataUrl = "data:image/png;base64,XXXX" — strip the prefix
+  const b64 = base64DataUrl.split(',')[1];
+  const path = `data/files/${docId}`;
+  const sha = await getSHA(path);
+  const result = await ghPut(path, atob(b64).split('').map(c=>String.fromCharCode(c.charCodeAt(0))).join('') , `Upload file ${docId}`, sha);
+  // Actually — GitHub API content must be base64. Use the raw b64 directly:
+  // We re-do this correctly:
+  return ghPutRaw(path, b64, `Upload file ${docId}`, sha);
+}
+
+async function ghPutRaw(path, base64Content, message, sha) {
+  const pat = await decryptPAT(); if (!pat) throw new Error('No PAT');
+  const body = { message, content: base64Content, branch: GH_BRANCH };
+  if (sha) body.sha = sha;
+  const r = await fetch(`https://api.github.com/repos/${GH_OWNER}/${GH_REPO}/contents/${path}`, {
+    method: 'PUT',
+    headers: { 'Authorization':`Bearer ${pat}`, 'Accept':'application/vnd.github+json', 'Content-Type':'application/json' },
+    body: JSON.stringify(body),
+  });
+  if (!r.ok) { const e = await r.json(); throw new Error(e.message || r.status); }
+  const res = await r.json();
+  if (res?.content?.sha) _shaCache[path] = res.content.sha;
+  return res;
+}
+
+async function deleteFile(path) {
+  const sha = await getSHA(path); if (!sha) return;
+  await ghDelete(path, `Remove file ${path}`, sha);
+  delete _shaCache[path];
+}
+
+// Raw file URL for download/preview
+function rawFileURL(docId) {
+  return `https://raw.githubusercontent.com/${GH_OWNER}/${GH_REPO}/${GH_BRANCH}/data/files/${docId}`;
+}
+
+// ══════════════════════════════
+// BOOT
+// ══════════════════════════════
+window.addEventListener('DOMContentLoaded', () => {
+  if (!hasPw()) {
+    g('setup-overlay').classList.add('show');
+  } else {
+    initApp();
+  }
+});
+
+async function initApp() {
+  // Show loading state
+  g('cards').innerHTML = `<div class="empty-state"><div class="big" style="animation:pulse 1.5s infinite">⏳</div><h3>Loading gallery…</h3><p>Fetching documents from GitHub</p></div>`;
+  g('btn-login').classList.remove('hidden');
+  await loadData();
+  renderSidebar(); renderCards();
+}
+
+// ══════════════════════════════
+// SETUP
+// ══════════════════════════════
+async function doSetup() {
+  const p1  = g('s-pw1').value, p2 = g('s-pw2').value;
+  const pat = g('s-pat').value.trim();
+  const err = g('setup-err');
+  err.classList.remove('show');
+  if (p1.length < 8)  { showErr(err,'Password must be at least 8 characters.'); return; }
+  if (p1 !== p2)      { showErr(err,'Passwords do not match.'); return; }
+  if (!pat.startsWith('ghp_') && !pat.startsWith('github_pat_'))
+    { showErr(err,'GitHub token should start with ghp_ or github_pat_'); return; }
+  const btn = g('setup-btn');
+  btn.disabled=true; btn.textContent='Saving…';
+  await savePw(p1);
+  await savePAT(pat); // encrypted with the password-derived key
+  g('setup-overlay').classList.remove('show');
+  btn.disabled=false; btn.textContent='Save & Open Gallery →';
+  toast('Setup complete ✓','success');
+  initApp();
+}
+
+// ══════════════════════════════
+// LOGIN
+// ══════════════════════════════
+function openLogin() {
+  const mins = lockedMins();
+  if (mins) { toast(`Locked out — try again in ${mins} min`,'error'); return; }
+  g('l-pw').value=''; g('login-err').classList.remove('show');
+  updateAttemptNote();
+  g('login-overlay').classList.add('show');
+  setTimeout(()=>g('l-pw').focus(),100);
+}
+function closeLogin() { g('login-overlay').classList.remove('show'); }
+
+function updateAttemptNote() {
+  const l = getLock(), rem = MAX_ATT - l.a;
+  g('attempt-note').textContent = l.a > 0 && l.a < MAX_ATT
+    ? `⚠ ${rem} attempt${rem!==1?'s':''} remaining before 15-min lockout` : '';
+}
+
+async function doLogin() {
+  const mins = lockedMins();
+  if (mins) { showErr(g('login-err'),`Locked out. Try again in ${mins} min.`); return; }
+  const pw = g('l-pw').value;
+  if (!pw) { showErr(g('login-err'),'Enter your password.'); return; }
+  const btn = g('login-btn');
+  btn.disabled=true; btn.textContent='Verifying…';
+  const ok = await verifyPw(pw);
+  btn.disabled=false; btn.textContent='Sign In as Admin';
+  if (!ok) {
+    const l = failAttempt();
+    const rem = MAX_ATT - l.a;
+    showErr(g('login-err'), l.u > Date.now()
+      ? 'Too many failed attempts. Locked for 15 minutes.'
+      : `Incorrect password. ${rem} attempt${rem!==1?'s':''} remaining.`);
+    updateAttemptNote();
+    g('l-pw').value='';
+    return;
+  }
+  resetLock(); closeLogin(); setAdmin(true);
+}
+
+function doLogout() { setAdmin(false); toast('Signed out','info'); }
+
+function setAdmin(on) {
+  S.role = on ? 'admin' : 'viewer';
+  const av=g('u-av'), nm=g('u-name'), badge=g('u-badge'), ind=g('admin-ind');
+  if (on) {
+    av.textContent='A'; av.style.background='var(--accent)';
+    nm.textContent='Admin'; badge.textContent='admin'; badge.className='role-badge admin';
+    ind.classList.add('on');
+    g('nav-admin').classList.remove('hidden'); g('upload-btn').classList.remove('hidden');
+    g('manage-tags-btn').classList.remove('hidden'); g('btn-login').classList.add('hidden');
+    g('btn-logout').classList.remove('hidden');
+    toast('Signed in as Admin','success');
+  } else {
+    av.textContent='V'; av.style.background='#6b7280';
+    nm.textContent='Viewer'; badge.textContent='viewer'; badge.className='role-badge viewer';
+    ind.classList.remove('on');
+    g('nav-admin').classList.add('hidden'); g('upload-btn').classList.add('hidden');
+    g('manage-tags-btn').classList.add('hidden'); g('btn-login').classList.remove('hidden');
+    g('btn-logout').classList.add('hidden');
+    showView('gallery');
+  }
+  renderCards();
+}
+
+// ══ Change password ══
+function openCpw() { ['c-cur','c-new1','c-new2'].forEach(id=>g(id).value=''); g('cpw-err').classList.remove('show'); g('cpw-overlay').classList.add('show'); }
+function closeCpw() { g('cpw-overlay').classList.remove('show'); }
+async function doChangePw() {
+  const cur=g('c-cur').value, n1=g('c-new1').value, n2=g('c-new2').value, err=g('cpw-err');
+  err.classList.remove('show');
+  if (!cur)       { showErr(err,'Enter your current password.'); return; }
+  if (n1.length<8){ showErr(err,'New password must be at least 8 characters.'); return; }
+  if (n1!==n2)    { showErr(err,'New passwords do not match.'); return; }
+  if (!await verifyPw(cur)) { showErr(err,'Current password is incorrect.'); return; }
+  await savePw(n1); closeCpw(); toast('Password updated ✓','success');
+}
+
+// ══════════════════════════════
+// VIEWS
+// ══════════════════════════════
+function showView(v) {
+  g('gallery-view').classList.toggle('hidden', v!=='gallery');
+  g('admin-view').classList.toggle('hidden', v!=='admin');
+  g('sidebar').classList.toggle('hidden', v!=='gallery');
+  g('nav-gallery').classList.toggle('active', v==='gallery');
+  g('nav-admin').classList.toggle('active', v==='admin');
+  if (v==='gallery') { renderSidebar(); renderCards(); }
+  if (v==='admin')   renderAdmin();
+}
+function setVM(m) {
+  S.vm=m;
+  g('vb-grid').classList.toggle('active',m==='grid');
+  g('vb-list').classList.toggle('active',m==='list');
+  renderCards();
+}
+
+// ══════════════════════════════
+// SIDEBAR
+// ══════════════════════════════
+function renderSidebar() {
+  const t={drawio:0,pptx:0,docx:0,pdf:0,other:0};
+  S.docs.forEach(d=>{ const k=ftype(d.fileName); t[k]!==undefined?t[k]++:t.other++; });
+  g('fc-all').textContent=S.docs.length;
+  Object.keys(t).forEach(k=>{ const e=g('fc-'+k); if(e)e.textContent=t[k]; });
+  g('sb-tags').innerHTML=S.tags.map(tag=>`
+    <button class="tag-pill${S.tagFilters.includes(tag)?' active':''}" onclick="toggleTag('${esc(tag)}')">${esc(tag)}</button>`).join('');
+}
+function fType(t) {
+  S.typeFilter=t;
+  document.querySelectorAll('.fi').forEach(e=>e.classList.remove('active'));
+  g('ft-'+t).classList.add('active'); renderCards();
+}
+function toggleTag(tag) {
+  const i=S.tagFilters.indexOf(tag);
+  if(i>-1)S.tagFilters.splice(i,1);else S.tagFilters.push(tag);
+  renderSidebar();renderCards();
+}
+
+// ══════════════════════════════
+// CARDS
+// ══════════════════════════════
+function filtered() {
+  let docs=[...S.docs];
+  if(S.typeFilter!=='all') docs=docs.filter(d=>ftype(d.fileName)===S.typeFilter);
+  if(S.tagFilters.length) docs=docs.filter(d=>S.tagFilters.every(t=>(d.tags||[]).includes(t)));
+  const q=g('search-inp')?.value.toLowerCase().trim()||'';
+  if(q) docs=docs.filter(d=>d.title.toLowerCase().includes(q)||d.description.toLowerCase().includes(q)||(d.tags||[]).some(t=>t.toLowerCase().includes(q)));
+  const srt=g('sort-sel')?.value||'newest';
+  if(srt==='newest')docs.sort((a,b)=>b.uploadedAt-a.uploadedAt);
+  else if(srt==='oldest')docs.sort((a,b)=>a.uploadedAt-b.uploadedAt);
+  else if(srt==='name')docs.sort((a,b)=>a.title.localeCompare(b.title));
+  else docs.sort((a,b)=>ftype(a.fileName).localeCompare(ftype(b.fileName)));
+  return docs;
+}
+
+function renderCards() {
+  const docs=filtered(), c=g('cards');
+  g('res-info').textContent=`Showing ${docs.length} of ${S.docs.length} document${S.docs.length!==1?'s':''}`;
+  if(!docs.length){
+    c.innerHTML=`<div class="empty-state"><div class="big">🗂️</div>
+      <h3>${S.docs.length===0?'No documents yet':'No results found'}</h3>
+      <p>${S.docs.length===0?(S.role==='admin'?'Upload your first document above.':'No documents uploaded yet.'):'Adjust search or filters.'}</p>
+    </div>`;return;
+  }
+  c.className=S.vm==='grid'?'cards-grid':'cards-list';
+  c.innerHTML=docs.map((d,i)=>S.vm==='grid'?cardG(d,i):cardL(d,i)).join('');
+}
+
+function cardG(d,i){
+  const t=ftype(d.fileName);
+  const thumb=getThumb(d);
+  const adm=S.role==='admin'?`<button class="btn-sm danger" onclick="event.stopPropagation();delDoc('${d.id}')">🗑</button>`:'';
+  return `<div class="doc-card" style="animation-delay:${i*.04}s" onclick="openPrev('${d.id}')">
+    <div class="card-thumb">
+      <img class="card-thumb-img" src="${thumb}" alt="${esc(d.title)}" loading="lazy"/>
+      <div class="card-thumb-ov">
+        <button class="taction" onclick="event.stopPropagation();openPrev('${d.id}')">👁 Preview</button>
+        <button class="taction" onclick="event.stopPropagation();dlDoc('${d.id}')">⬇ Download</button>
+      </div>
+    </div>
+    <div class="card-body">
+      <div class="card-tags">${(d.tags||[]).slice(0,3).map(tg=>`<span class="ctag">${esc(tg)}</span>`).join('')}</div>
+      <div class="card-title">${esc(d.title)}</div>
+      <div class="card-desc">${esc(d.description)}</div>
+    </div>
+    <div class="card-footer">
+      <div class="card-meta">${fdate(d.uploadedAt)} · ${fbytes(d.fileSize)}</div>
+      <div class="card-acts"><button class="btn-sm primary" onclick="event.stopPropagation();dlDoc('${d.id}')">⬇</button>${adm}</div>
+    </div>
+  </div>`;
+}
+
+function cardL(d,i){
+  const thumb=getThumb(d);
+  const adm=S.role==='admin'?`<button class="btn-sm danger" onclick="event.stopPropagation();delDoc('${d.id}')">🗑</button>`:'';
+  return `<div class="list-card" style="animation-delay:${i*.03}s" onclick="openPrev('${d.id}')">
+    <div class="list-icon" style="background:url('${thumb}') center/cover;overflow:hidden;font-size:0"> </div>
+    <div class="list-body">
+      <div class="list-title">${esc(d.title)}</div>
+      <div class="list-desc">${esc(d.description)}</div>
+      <div class="list-tags">${(d.tags||[]).slice(0,4).map(tg=>`<span class="ctag">${esc(tg)}</span>`).join('')}</div>
+    </div>
+    <div class="list-right">
+      <span class="card-meta">${fdate(d.uploadedAt)}</span>
+      <button class="btn-sm primary" onclick="event.stopPropagation();dlDoc('${d.id}')">⬇ Download</button>
+      ${adm}
+    </div>
+  </div>`;
+}
+
+// ══════════════════════════════
+// PREVIEW
+// ══════════════════════════════
+// ══════════════════════════════
+// DRAW.IO XML → SVG  (no external services, fully offline)
+// ══════════════════════════════
+function parseAttrsStr(str) {
+  const obj = {};
+  const re = /(\w[\w-]*)="([^"]*)"/g;
+  let m;
+  while ((m = re.exec(str)) !== null) obj[m[1]] = m[2];
+  return obj;
+}
+function parseStyleStr(s) {
+  const obj = {};
+  if (!s) return obj;
+  s.split(';').forEach(p => {
+    const eq = p.indexOf('=');
+    if (eq > 0) obj[p.slice(0,eq).trim()] = p.slice(eq+1).trim();
+  });
+  return obj;
+}
+function htmlEnt(s) {
+  return String(s||'').replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;');
+}
+
+function drawioXMLtoSVG(xmlString) {
+  // ── 1. Parse all mxCell elements ──
+  const cells = {};
+  // Match both self-closing and with children
+  const cellRe = /<mxCell([\s\S]*?)(?:\/?>|>([\s\S]*?)<\/mxCell>)/g;
+  const geoRe  = /<mxGeometry([^>]*?)(?:\/|><\/mxGeometry)>/;
+  let cm;
+  while ((cm = cellRe.exec(xmlString)) !== null) {
+    const a = parseAttrsStr(cm[1]);
+    const inner = (cm[2] || '') + cm[1];
+    const gm = geoRe.exec(inner);
+    if (gm) a._g = parseAttrsStr(gm[1]);
+    if (a.id) cells[a.id] = a;
+  }
+
+  const verts = Object.values(cells).filter(c => c.vertex === '1' && c._g);
+  const edges  = Object.values(cells).filter(c => c.edge === '1');
+
+  if (verts.length === 0) return null; // empty / unreadable
+
+  // ── 2. Bounding box ──
+  let x0=1e9,y0=1e9,x1=-1e9,y1=-1e9;
+  verts.forEach(v => {
+    const g=v._g, x=+g.x||0, y=+g.y||0, w=+g.width||120, h=+g.height||60;
+    x0=Math.min(x0,x); y0=Math.min(y0,y); x1=Math.max(x1,x+w); y1=Math.max(y1,y+h);
+  });
+  const PAD=40, W=x1-x0+PAD*2, H=y1-y0+PAD*2;
+  const ox=-x0+PAD, oy=-y0+PAD;
+
+  // ── 3. Render SVG ──
+  let out = `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 ${W} ${H}" style="width:100%;height:100%;background:#f8f9fa">
+<defs>
+  <marker id="arr" markerWidth="10" markerHeight="7" refX="9" refY="3.5" orient="auto">
+    <polygon points="0 0,10 3.5,0 7" fill="#555"/>
+  </marker>
+</defs>
+<rect width="${W}" height="${H}" fill="#f8f9fa"/>
+`;
+
+  // Edges first (behind shapes)
+  edges.forEach(e => {
+    const src=cells[e.source], tgt=cells[e.target];
+    if (!src?._g || !tgt?._g) return;
+    const sg=src._g, tg=tgt._g;
+    const sx=(+sg.x||0)+ox+(+sg.width||120)/2, sy=(+sg.y||0)+oy+(+sg.height||60)/2;
+    const tx=(+tg.x||0)+ox+(+tg.width||120)/2, ty=(+tg.y||0)+oy+(+tg.height||60)/2;
+    // Bend midpoint for curved look
+    const mx=(sx+tx)/2, my=(sy+ty)/2;
+    out += `<line x1="${sx.toFixed(1)}" y1="${sy.toFixed(1)}" x2="${tx.toFixed(1)}" y2="${ty.toFixed(1)}" stroke="#666" stroke-width="1.5" marker-end="url(#arr)"/>\n`;
+    if (e.value) {
+      out += `<text x="${mx.toFixed(1)}" y="${(my-6).toFixed(1)}" text-anchor="middle" font-family="Arial,sans-serif" font-size="11" fill="#555">${htmlEnt(e.value)}</text>\n`;
+    }
+  });
+
+  // Shapes
+  verts.forEach(v => {
+    const g=v._g;
+    const x=(+g.x||0)+ox, y=(+g.y||0)+oy, w=+g.width||120, h=+g.height||60;
+    const st=parseStyleStr(v.style||'');
+    const fill   = st.fillColor   || '#ffffff';
+    const stroke = st.strokeColor || '#aaaaaa';
+    const fc     = st.fontColor   || '#000000';
+    const fs     = Math.min(Math.max(+st.fontSize||13, 9), 18);
+    const fw     = (st.bold==='1'||st.fontStyle==='1') ? 'bold' : 'normal';
+    const lbl    = htmlEnt(v.value||'');
+
+    const shape = v.style||'';
+    const isEllipse  = shape.includes('ellipse');
+    const isRhombus  = shape.includes('rhombus');
+    const isHex      = shape.includes('hexagon');
+    const isCyl      = shape.includes('cylinder');
+    const isParallel = shape.includes('parallelogram');
+    const rnd        = st.rounded==='1' ? Math.min(10, h*0.25) : 0;
+    const dashed     = st.dashed==='1' ? 'stroke-dasharray="6,3"' : '';
+    const opacity    = st.opacity ? `opacity="${+st.opacity/100}"` : '';
+
+    if (isEllipse) {
+      out += `<ellipse cx="${(x+w/2).toFixed(1)}" cy="${(y+h/2).toFixed(1)}" rx="${(w/2).toFixed(1)}" ry="${(h/2).toFixed(1)}" fill="${fill}" stroke="${stroke}" stroke-width="1.5" ${dashed} ${opacity}/>\n`;
+    } else if (isRhombus) {
+      out += `<polygon points="${(x+w/2).toFixed(1)},${y.toFixed(1)} ${(x+w).toFixed(1)},${(y+h/2).toFixed(1)} ${(x+w/2).toFixed(1)},${(y+h).toFixed(1)} ${x.toFixed(1)},${(y+h/2).toFixed(1)}" fill="${fill}" stroke="${stroke}" stroke-width="1.5" ${dashed} ${opacity}/>\n`;
+    } else if (isHex) {
+      const r=Math.min(w,h)/4;
+      out += `<polygon points="${(x+r).toFixed(1)},${y.toFixed(1)} ${(x+w-r).toFixed(1)},${y.toFixed(1)} ${(x+w).toFixed(1)},${(y+h/2).toFixed(1)} ${(x+w-r).toFixed(1)},${(y+h).toFixed(1)} ${(x+r).toFixed(1)},${(y+h).toFixed(1)} ${x.toFixed(1)},${(y+h/2).toFixed(1)}" fill="${fill}" stroke="${stroke}" stroke-width="1.5" ${dashed} ${opacity}/>\n`;
+    } else {
+      out += `<rect x="${x.toFixed(1)}" y="${y.toFixed(1)}" width="${w.toFixed(1)}" height="${h.toFixed(1)}" rx="${rnd}" fill="${fill}" stroke="${stroke}" stroke-width="1.5" ${dashed} ${opacity}/>\n`;
+    }
+
+    // Label (wrap at ~20 chars)
+    if (lbl) {
+      const lines = wrapText(v.value||'', Math.floor(w/8));
+      const lineH = fs * 1.4;
+      const startY = y + h/2 - (lines.length-1)*lineH/2;
+      lines.forEach((ln,i) => {
+        out += `<text x="${(x+w/2).toFixed(1)}" y="${(startY+i*lineH).toFixed(1)}" text-anchor="middle" dominant-baseline="middle" font-family="Arial,sans-serif" font-size="${fs}" font-weight="${fw}" fill="${fc}">${htmlEnt(ln)}</text>\n`;
+      });
+    }
+  });
+
+  out += '</svg>';
+  return out;
+}
+
+function wrapText(text, maxChars) {
+  if (!text) return [''];
+  const words = text.split(' ');
+  const lines = [];
+  let cur = '';
+  words.forEach(w => {
+    if ((cur+' '+w).trim().length > maxChars && cur) { lines.push(cur); cur=w; }
+    else cur = (cur+' '+w).trim();
+  });
+  if (cur) lines.push(cur);
+  return lines.length ? lines : [text];
+}
+
+// ══════════════════════════════
+// PREVIEW
+// ══════════════════════════════
+function openPrev(id){
+  const d = S.docs.find(x=>x.id===id); if(!d) return;
+  const t   = ftype(d.fileName);
+  const ext = d.fileName.split('.').pop().toLowerCase();
+
+  g('prev-modal-title').textContent = d.title;
+  g('prev-title').textContent       = d.title;
+  g('prev-desc').textContent        = d.description;
+
+  const banner = g('prev-banner');
+  const dioc   = g('dio-container');
+  const diofr  = g('dio-frame');
+
+  dioc.classList.add('hidden');
+  diofr.srcdoc = '';
+  diofr.src    = 'about:blank';
+  banner.style.display    = 'flex';
+  banner.style.background = '#f8f9fa';
+  banner.innerHTML        = '';
+
+  // ── CASE 1: draw.io → render our own SVG (no external service) ──
+  if (t === 'drawio' && d.fileData) {
+    const svg = drawioXMLtoSVG(d.fileData);
+    if (svg) {
+      banner.style.background = '#f8f9fa';
+      banner.style.padding    = '0';
+      banner.innerHTML        = svg;
+    } else {
+      banner.innerHTML = noPreview(ext, getThumb(d), 'Could not parse diagram XML');
+    }
+
+  // ── CASE 2: Image → show directly or fetch from GitHub ──
+  } else if (['png','jpg','jpeg','gif','webp'].includes(ext)) {
+    banner.style.background = '#111';
+    if(d.hasGithubFile){
+      banner.innerHTML = `<img src="${rawFileURL(d.id)}" style="max-width:100%;max-height:320px;object-fit:contain" alt="${esc(d.title)}" onerror="this.replaceWith(Object.assign(document.createElement('div'),{textContent:'Could not load image',style:'color:#fff;padding:20px'}))"/>`;
+    } else {
+      banner.innerHTML = noPreview(ext, getThumb(d));
+    }
+
+  // ── CASE 3: SVG ──
+  } else if (ext === 'svg') {
+    banner.style.background = '#fff';
+    banner.innerHTML = d.hasGithubFile
+      ? `<img src="${rawFileURL(d.id)}" style="max-width:100%;max-height:320px;object-fit:contain" alt="${esc(d.title)}"/>`
+      : noPreview(ext, getThumb(d));
+
+  // ── CASE 4: PDF → native browser viewer in iframe ──
+  } else if (ext === 'pdf' && d.hasGithubFile) {
+    dioc.classList.remove('hidden');
+    banner.style.display = 'none';
+    diofr.src = rawFileURL(d.id);
+
+  // ── CASE 5: Everything else → thumbnail + message ──
+  } else {
+    banner.innerHTML = noPreview(ext, getThumb(d));
+  }
+
+  g('prev-tags').innerHTML = (d.tags||[]).map(tag=>`<span class="ctag">${esc(tag)}</span>`).join('');
+  g('prev-meta').innerHTML = `
+    <div class="pm-item"><div class="pm-lbl">File name</div><div class="pm-val">${esc(d.fileName)}</div></div>
+    <div class="pm-item"><div class="pm-lbl">File size</div><div class="pm-val">${fbytes(d.fileSize)}</div></div>
+    <div class="pm-item"><div class="pm-lbl">File type</div><div class="pm-val">${t.toUpperCase()}</div></div>
+    <div class="pm-item"><div class="pm-lbl">Uploaded</div><div class="pm-val">${fdate(d.uploadedAt)}</div></div>`;
+  const adm = S.role==='admin'
+    ? `<button class="btn-pa secondary" onclick="delDoc('${d.id}')">🗑 Delete</button>` : '';
+  g('prev-acts').innerHTML = `
+    <button class="btn-pa primary" onclick="dlDoc('${d.id}')">⬇ Download</button>
+    <button class="btn-pa secondary" onclick="closePrev()">✕ Close</button>${adm}`;
+  g('prev-modal').classList.add('show');
+}
+
+function noPreview(ext, thumb, msg) {
+  return `<div style="text-align:center;padding:24px">
+    <img src="${thumb}" style="width:220px;height:138px;object-fit:cover;border-radius:10px;box-shadow:0 4px 20px rgba(0,0,0,.15);margin-bottom:14px;display:block;margin-left:auto;margin-right:auto"/>
+    <div style="font-size:.78rem;color:#8a847c;font-family:monospace">
+      ${msg || `Preview not available for .${ext} files`}<br/>
+      <span style="font-size:.7rem">Download to open in the native app</span>
+    </div>
+  </div>`;
+}
+
+function closePrev(){
+  g('prev-modal').classList.remove('show');
+  g('dio-frame').src    = 'about:blank';
+  g('dio-frame').srcdoc = '';
+  g('dio-container').classList.add('hidden');
+  const b = g('prev-banner');
+  b.style.display = 'flex'; b.innerHTML = ''; b.style.background = ''; b.style.padding = '';
+}
+
+// ══════════════════════════════
+// THUMBNAIL GENERATION
+// ══════════════════════════════
+
+// Generate a canvas-based thumbnail — works in ALL browsers, no SVG data URL issues
+function genSVGThumb(type, title) {
+  const cfg = {
+    drawio: { c1:'#dbeafe', c2:'#3b82f6', text:'#1d4ed8', emoji:'📐', label:'draw.io'     },
+    pptx:   { c1:'#fce7f3', c2:'#ec4899', text:'#9d174d', emoji:'📊', label:'PowerPoint'  },
+    docx:   { c1:'#dcfce7', c2:'#22c55e', text:'#166534', emoji:'📝', label:'Word Doc'    },
+    pdf:    { c1:'#fee2e2', c2:'#ef4444', text:'#991b1b', emoji:'📄', label:'PDF'         },
+    other:  { c1:'#f3f4f6', c2:'#9ca3af', text:'#374151', emoji:'📁', label:'Document'    },
+  }[type] || { c1:'#f3f4f6', c2:'#9ca3af', text:'#374151', emoji:'📁', label:'File' };
+
+  const W=480, H=300;
+  const canvas = document.createElement('canvas');
+  canvas.width=W; canvas.height=H;
+  const ctx = canvas.getContext('2d');
+
+  // Gradient background
+  const grad = ctx.createLinearGradient(0,0,W,H);
+  grad.addColorStop(0, cfg.c1);
+  grad.addColorStop(1, cfg.c2+'55');
+  ctx.fillStyle = grad;
+  ctx.fillRect(0,0,W,H);
+
+  // Decorative circles
+  ctx.fillStyle = cfg.c2+'22';
+  ctx.beginPath(); ctx.arc(60,60,90,0,Math.PI*2); ctx.fill();
+  ctx.beginPath(); ctx.arc(W-60,H-60,110,0,Math.PI*2); ctx.fill();
+
+  // White card in center
+  roundRect(ctx, 140, 60, 200, 130, 18, 'rgba(255,255,255,0.62)');
+
+  // Emoji icon
+  ctx.font = '64px serif';
+  ctx.textAlign = 'center';
+  ctx.textBaseline = 'middle';
+  ctx.fillText(cfg.emoji, W/2, 128);
+
+  // Title bar
+  roundRect(ctx, 60, 215, W-120, 36, 8, 'rgba(255,255,255,0.5)');
+  ctx.fillStyle = cfg.text;
+  ctx.font = 'bold 13px Arial, sans-serif';
+  ctx.textBaseline = 'middle';
+  const shortTitle = (title||'').length>34 ? (title||'').slice(0,33)+'…' : (title||'');
+  ctx.fillText(shortTitle, W/2, 233);
+
+  // Label
+  ctx.fillStyle = cfg.text + '88';
+  ctx.font = '11px Arial, sans-serif';
+  ctx.fillText(cfg.label, W/2, 272);
+
+  return canvas.toDataURL('image/png');
+}
+
+function roundRect(ctx, x, y, w, h, r, fill) {
+  ctx.beginPath();
+  ctx.moveTo(x+r, y);
+  ctx.lineTo(x+w-r, y); ctx.quadraticCurveTo(x+w, y, x+w, y+r);
+  ctx.lineTo(x+w, y+h-r); ctx.quadraticCurveTo(x+w, y+h, x+w-r, y+h);
+  ctx.lineTo(x+r, y+h); ctx.quadraticCurveTo(x, y+h, x, y+h-r);
+  ctx.lineTo(x, y+r); ctx.quadraticCurveTo(x, y, x+r, y);
+  ctx.closePath();
+  ctx.fillStyle = fill;
+  ctx.fill();
+}
+
+// Get thumbnail for a doc — generate and cache if missing
+function getThumb(d) {
+  if (d.thumbnail) return d.thumbnail;
+  // Auto-generate and cache so it's not regenerated every render
+  const t = genSVGThumb(ftype(d.fileName), d.title);
+  d.thumbnail = t;
+  return t;
+}
+
+// Resize an image file to a thumbnail (returns base64 dataURL)
+function resizeImageToThumb(file, maxW=480, maxH=300) {
+  return new Promise((resolve) => {
+    const img = new Image();
+    const url = URL.createObjectURL(file);
+    img.onload = () => {
+      const canvas = document.createElement('canvas');
+      let w = img.width, h = img.height;
+      const ratio = Math.min(maxW/w, maxH/h, 1);
+      canvas.width  = Math.round(w * ratio);
+      canvas.height = Math.round(h * ratio);
+      const ctx = canvas.getContext('2d');
+      ctx.drawImage(img, 0, 0, canvas.width, canvas.height);
+      URL.revokeObjectURL(url);
+      resolve(canvas.toDataURL('image/jpeg', 0.82));
+    };
+    img.onerror = () => { URL.revokeObjectURL(url); resolve(null); };
+    img.src = url;
+  });
+}
+
+// Show live preview in upload form
+function updateThumbPreview(dataUrl) {
+  const box = g('thumb-preview-box');
+  const ph  = g('thumb-placeholder');
+  // Remove old img if any
+  const old = box.querySelector('img');
+  if (old) old.remove();
+  if (dataUrl) {
+    const img = document.createElement('img');
+    img.src = dataUrl;
+    img.style.cssText = 'width:100%;height:100%;object-fit:cover;border-radius:9px;display:block';
+    box.appendChild(img);
+    ph.style.display = 'none';
+    g('btn-thumb-clear').classList.remove('hidden');
+  } else {
+    ph.style.display = 'flex';
+    g('btn-thumb-clear').classList.add('hidden');
+  }
+}
+
+function clearThumb() {
+  S.selThumb = null;
+  g('thumb-inp').value = '';
+  updateThumbPreview(null);
+  // Restore auto icon
+  if (S.selFile) {
+    g('thumb-placeholder-icon').textContent = fico(ftype(S.selFile.name));
+  } else {
+    g('thumb-placeholder-icon').textContent = '🖼️';
+  }
+}
+
+async function onThumbSelect(e) {
+  const f = e.target.files[0]; if (!f) return;
+  const dataUrl = await resizeImageToThumb(f);
+  if (dataUrl) { S.selThumb = dataUrl; updateThumbPreview(dataUrl); }
+}
+
+// ══════════════════════════════
+// UPLOAD
+// ══════════════════════════════
+function openUpload(){
+  S.selFile=null; S.selTags=[]; S.selThumb=null;
+  g('doc-title').value=''; g('doc-desc').value=''; g('cc').textContent='0';
+  g('file-inp').value=''; g('thumb-inp').value='';
+  g('sel-file').classList.remove('show');
+  g('thumb-placeholder-icon').textContent='🖼️';
+  updateThumbPreview(null);
+  renderTagSel();
+  g('upload-modal').classList.add('show');
+}
+function closeUpload(){ g('upload-modal').classList.remove('show'); S.selFile=null; S.selThumb=null; }
+function renderTagSel(){
+  g('tag-sel').innerHTML=S.tags.map(t=>`
+    <div class="tag-opt${S.selTags.includes(t)?' sel':''}" onclick="toggleSelTag('${esc(t)}')">${esc(t)}</div>`).join('');
+}
+function toggleSelTag(t){
+  const i=S.selTags.indexOf(t); if(i>-1)S.selTags.splice(i,1); else S.selTags.push(t);
+  renderTagSel();
+}
+
+const dz=g('drop-zone');
+dz.addEventListener('dragover',e=>{e.preventDefault();dz.classList.add('dragover')});
+dz.addEventListener('dragleave',()=>dz.classList.remove('dragover'));
+dz.addEventListener('drop',e=>{e.preventDefault();dz.classList.remove('dragover');const f=e.dataTransfer.files[0];if(f)setFile(f)});
+function onFileSelect(e){ if(e.target.files[0])setFile(e.target.files[0]); }
+
+async function setFile(f){
+  S.selFile=f; const t=ftype(f.name);
+  g('sel-ico').textContent=fico(t); g('sel-nm').textContent=f.name; g('sel-sz').textContent=fbytes(f.size);
+  g('sel-file').classList.add('show');
+  if(!g('doc-title').value){const n=f.name.replace(/\.[^.]+$/,'').replace(/[-_]/g,' ');g('doc-title').value=n[0].toUpperCase()+n.slice(1);}
+  // Auto-generate thumbnail for image files
+  const isImage = ['png','jpg','jpeg','gif','webp','svg'].includes(f.name.split('.').pop().toLowerCase());
+  if (isImage && !S.selThumb) {
+    const dataUrl = await resizeImageToThumb(f);
+    if (dataUrl) { S.selThumb = dataUrl; updateThumbPreview(dataUrl); return; }
+  }
+  // For non-images show the file-type icon in placeholder
+  g('thumb-placeholder-icon').textContent = fico(t);
+  if (!S.selThumb) updateThumbPreview(null);
+}
+
+function clearFile(){
+  S.selFile=null; g('file-inp').value=''; g('sel-file').classList.remove('show');
+  g('thumb-placeholder-icon').textContent='🖼️';
+  if(!S.selThumb) updateThumbPreview(null);
+}
+
+async function submitUpload(){
+  const title=g('doc-title').value.trim(), desc=g('doc-desc').value.trim();
+  if(!title){toast('Please enter a title','error');return;}
+  if(!desc){toast('Please enter a description','error');return;}
+  if(!S.selFile){toast('Please select a file','error');return;}
+
+  const btn=g('submit-btn'); btn.disabled=true; btn.textContent='Uploading…';
+
+  try {
+    const f=S.selFile, t=ftype(f.name);
+    const docId = 'doc_'+Date.now()+'_'+Math.random().toString(36).slice(2,8);
+
+    // Read file
+    let fileData=null;
+    if(t==='drawio') fileData=await rText(f);
+    const fileBase64 = f.size < 10*1024*1024 ? await rB64(f) : null;
+
+    // Thumbnail
+    const thumbnail = S.selThumb || genSVGThumb(t, title);
+
+    // Push file to GitHub under data/files/<docId>
+    btn.textContent='Saving file…';
+    if(fileBase64){
+      const rawB64 = fileBase64.split(',')[1];
+      await ghPutRaw(`data/files/${docId}`, rawB64, `Upload: ${title}`);
+    } else if(fileData) {
+      await ghPutRaw(`data/files/${docId}`, btoa(unescape(encodeURIComponent(fileData))), `Upload: ${title}`);
+    }
+
+    // Build doc metadata (no binary blobs in docs.json — just refs)
+    const doc = {
+      id: docId, title, description:desc,
+      fileName:f.name, fileSize:f.size, fileType:t,
+      tags:[...S.selTags], uploadedAt:Date.now(),
+      thumbnail,
+      // store small drawio XML inline for preview rendering
+      fileData: (t==='drawio' && fileData && fileData.length < 200000) ? fileData : null,
+      hasGithubFile: true,
+    };
+
+    // Push updated docs.json
+    btn.textContent='Updating gallery…';
+    S.docs.unshift(doc);
+    await saveData();
+
+    closeUpload(); renderSidebar(); renderCards();
+    toast(`"${title}" uploaded & saved to GitHub ✓`,'success');
+  } catch(e) {
+    toast('Upload failed: ' + e.message,'error');
+    console.error(e);
+  }
+  btn.disabled=false; btn.textContent='↑ Upload Document';
+}
+const rText=f=>new Promise((res,rej)=>{const r=new FileReader();r.onload=e=>res(e.target.result);r.onerror=rej;r.readAsText(f)});
+const rB64=f=>new Promise((res,rej)=>{const r=new FileReader();r.onload=e=>res(e.target.result);r.onerror=rej;r.readAsDataURL(f)});
+
+// ══════════════════════════════
+// DOWNLOAD / DELETE
+// ══════════════════════════════
+async function dlDoc(id){
+  const d=S.docs.find(x=>x.id===id); if(!d) return;
+  toast('Preparing download…','info');
+  try {
+    if(d.hasGithubFile){
+      // Fetch raw file from GitHub
+      const url = rawFileURL(d.id);
+      const r = await fetch(url);
+      if(!r.ok) throw new Error('File not found on GitHub');
+      const blob = await r.blob();
+      const a = document.createElement('a');
+      a.href = URL.createObjectURL(blob);
+      a.download = d.fileName; a.click();
+      setTimeout(()=>URL.revokeObjectURL(a.href),2000);
+    } else if(d.fileData){
+      const blob=new Blob([d.fileData],{type:'text/xml'});
+      const a=document.createElement('a');
+      a.href=URL.createObjectURL(blob); a.download=d.fileName; a.click();
+      setTimeout(()=>URL.revokeObjectURL(a.href),2000);
+    } else {
+      toast('No file data available','error'); return;
+    }
+    toast(`Downloading "${d.title}"`,'info');
+  } catch(e) { toast('Download failed: '+e.message,'error'); }
+}
+
+async function confirmDelete(){
+  const id=S._pendingDelete; if(!id) return;
+  const d=S.docs.find(x=>x.id===id);
+  const btn=g('confirm-modal').querySelector('button:last-child');
+  btn.disabled=true; btn.textContent='Deleting…';
+  try {
+    // Remove file from GitHub
+    if(d?.hasGithubFile){
+      await deleteFile(`data/files/${id}`);
+    }
+    S.docs=S.docs.filter(x=>x.id!==id);
+    await saveData();
+    renderSidebar(); renderCards();
+    if(!g('admin-view').classList.contains('hidden')) renderAdmin();
+    if(g('prev-modal').classList.contains('show')) closePrev();
+    toast('Document deleted','info');
+  } catch(e) {
+    toast('Delete failed: '+e.message,'error');
+  }
+  btn.disabled=false; btn.textContent='Delete';
+  closeConfirm();
+}
+function closeConfirm(){
+  S._pendingDelete=null;
+  g('confirm-modal').classList.remove('show');
+}
+
+// ══════════════════════════════
+// TAG MANAGER
+// ══════════════════════════════
+function openTagMgr(){if(S.role!=='admin')return;renderTMList();g('tm-modal').classList.add('show');}
+function closeTM(){g('tm-modal').classList.remove('show');}
+function renderTMList(){
+  const list=g('tm-list');
+  if(!S.tags.length){list.innerHTML='<p style="padding:16px;color:var(--muted);font-size:.82rem">No tags. Add one below.</p>';return;}
+  list.innerHTML=S.tags.map(tag=>{
+    const cnt=S.docs.filter(d=>(d.tags||[]).includes(tag)).length;
+    return `<div class="tm-row"><div class="tm-name">${esc(tag)}</div><div class="tm-cnt">${cnt} doc${cnt!==1?'s':''}</div><button class="tm-del" onclick="removeTag('${esc(tag)}')">🗑</button></div>`;
+  }).join('');
+}
+async function addTag(){
+  const inp=g('tm-inp'),val=inp.value.trim();
+  if(!val)return; if(S.tags.includes(val)){toast('Tag already exists','error');return;}
+  S.tags.push(val); inp.value='';
+  try{ await saveData(); renderTMList(); renderSidebar(); toast(`Tag "${val}" added`,'success'); }
+  catch(e){ toast('Save failed: '+e.message,'error'); S.tags.pop(); }
+}
+async function removeTag(tag){
+  const prevTags=[...S.tags];
+  S.tags=S.tags.filter(t=>t!==tag);
+  S.docs.forEach(d=>{d.tags=(d.tags||[]).filter(t=>t!==tag)});
+  S.tagFilters=S.tagFilters.filter(t=>t!==tag);
+  try{ await saveData(); renderTMList(); renderSidebar(); renderCards(); toast(`Tag "${tag}" removed`,'info'); }
+  catch(e){ toast('Save failed: '+e.message,'error'); S.tags=prevTags; }
+}
+
+// ══════════════════════════════
+// ADMIN PANEL
+// ══════════════════════════════
+function renderAdmin(){
+  const docs=S.docs;
+  let total=0;const t={drawio:0,pptx:0,docx:0,pdf:0,other:0};
+  docs.forEach(d=>{const k=ftype(d.fileName);t[k]!==undefined?t[k]++:t.other++;total+=d.fileSize||0;});
+  // Security grid
+  const pw=JSON.parse(localStorage.getItem(SK_HASH)||'null');
+  const lk=getLock();
+  g('sec-grid').innerHTML=`
+    <div class="sec-item"><div class="sec-lbl">Algorithm</div><div class="sec-val ok">PBKDF2-SHA256 · ${ITERS.toLocaleString()} iters</div></div>
+    <div class="sec-item"><div class="sec-lbl">Password set</div><div class="sec-val ok">${pw?fdate(pw.at):'—'}</div></div>
+    <div class="sec-item"><div class="sec-lbl">Failed attempts</div><div class="sec-val ${lk.a>0?'warn':'ok'}">${lk.a} / ${MAX_ATT}</div></div>
+    <div class="sec-item"><div class="sec-lbl">Salt</div><div class="sec-val ok">32-byte random (per password)</div></div>`;
+  // Stats
+  g('stats-grid').innerHTML=`
+    <div class="stat-card"><div class="stat-ico">📁</div><div class="stat-num">${docs.length}</div><div class="stat-lbl">Total Documents</div></div>
+    <div class="stat-card"><div class="stat-ico">🏷️</div><div class="stat-num">${S.tags.length}</div><div class="stat-lbl">Tags</div></div>
+    <div class="stat-card"><div class="stat-ico">📐</div><div class="stat-num">${t.drawio}</div><div class="stat-lbl">draw.io Files</div></div>
+    <div class="stat-card"><div class="stat-ico">📊</div><div class="stat-num">${t.pptx}</div><div class="stat-lbl">PowerPoints</div></div>
+    <div class="stat-card"><div class="stat-ico">📝</div><div class="stat-num">${t.docx}</div><div class="stat-lbl">Word Docs</div></div>
+    <div class="stat-card"><div class="stat-ico">💾</div><div class="stat-num">${fbytes(total)}</div><div class="stat-lbl">Total Size</div></div>`;
+  // Table
+  const tb=g('t-body');
+  if(!docs.length){tb.innerHTML='<div style="padding:40px;text-align:center;color:var(--muted);font-size:.85rem">No documents yet.</div>';return;}
+  tb.innerHTML=docs.map(d=>`
+    <div class="t-row">
+      <div><div class="t-title">${fico(ftype(d.fileName))} ${esc(d.title)}</div><div class="t-meta">${esc(d.fileName)}</div></div>
+      <div><span class="ctag">${ftype(d.fileName).toUpperCase()}</span>${(d.tags||[]).slice(0,2).map(t=>`<span class="ctag">${esc(t)}</span>`).join('')}</div>
+      <div class="t-meta">${fdate(d.uploadedAt)}<br/>${fbytes(d.fileSize)}</div>
+      <div class="t-acts">
+        <button class="btn-sm" onclick="openPrev('${d.id}')">👁</button>
+        <button class="btn-sm" onclick="dlDoc('${d.id}')">⬇</button>
+        <button class="btn-sm danger" onclick="delDoc('${d.id}')">🗑</button>
+      </div>
+    </div>`).join('');
+}
+
+// ══════════════════════════════
+// UTILS
+// ══════════════════════════════
+function g(id){return document.getElementById(id)}
+function ftype(n){
+  if(!n)return'other';const e=n.split('.').pop().toLowerCase();
+  if(['drawio','xml','dio'].includes(e))return'drawio';
+  if(['pptx','ppt'].includes(e))return'pptx';
+  if(['docx','doc'].includes(e))return'docx';
+  if(['pdf'].includes(e))return'pdf';
+  if(['xlsx','xls','csv'].includes(e))return'docx';
+  return'other';
+}
+const fico=t=>({drawio:'📐',pptx:'📊',docx:'📝',pdf:'📄',other:'📁'}[t]||'📁');
+const tbg=t=>({
+  drawio:'linear-gradient(135deg,#dbeafe,#bfdbfe)',
+  pptx:'linear-gradient(135deg,#fce7f3,#fbcfe8)',
+  docx:'linear-gradient(135deg,#dcfce7,#bbf7d0)',
+  pdf:'linear-gradient(135deg,#fee2e2,#fecaca)',
+  other:'linear-gradient(135deg,#f3f4f6,#e5e7eb)',
+}[t]||'linear-gradient(135deg,#f3f4f6,#e5e7eb)');
+const fdate=ts=>new Date(ts).toLocaleDateString('en-GB',{day:'2-digit',month:'short',year:'numeric'});
+function fbytes(b){if(!b)return'—';if(b<1024)return b+' B';if(b<1048576)return(b/1024).toFixed(1)+' KB';return(b/1048576).toFixed(2)+' MB';}
+function esc(s){return s?String(s).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;'):''}
+function showErr(el,msg){el.textContent='⚠ '+msg;el.classList.add('show');}
+function toast(msg,type='info'){
+  const el=document.createElement('div');el.className=`toast ${type}`;
+  el.innerHTML=`<span>${{success:'✓',error:'✕',warn:'⚠',info:'ℹ'}[type]||'ℹ'}</span> ${msg}`;
+  g('toasts').appendChild(el);setTimeout(()=>el.remove(),3500);
+}
+
+// Password strength indicator
+function pwStrength(pw,barId,lblId){
+  const bar=g(barId),lbl=g(lblId);
+  if(!pw){bar.className='pw-bar';lbl.textContent='';return;}
+  let s=0;
+  if(pw.length>=8)s++;if(pw.length>=12)s++;
+  if(/[A-Z]/.test(pw)&&/[a-z]/.test(pw))s++;
+  if(/[0-9]/.test(pw))s++;if(/[^A-Za-z0-9]/.test(pw))s++;
+  if(s<=2){bar.className='pw-bar weak';lbl.textContent='Weak';}
+  else if(s<=3){bar.className='pw-bar fair';lbl.textContent='Fair';}
+  else{bar.className='pw-bar strong';lbl.textContent='Strong ✓';}
+}
+
+// Eye toggle
+function eyeToggle(id,btn){
+  const inp=g(id);inp.type=inp.type==='password'?'text':'password';
+  btn.textContent=inp.type==='text'?'🙈':'👁';
+}
+
+// Close modals on backdrop click
+['upload-modal','tm-modal','login-overlay','cpw-overlay','setup-overlay','confirm-modal'].forEach(id=>{
+  const el=g(id);
+  el.addEventListener('click',e=>{
+    if(e.target===el){
+      if(id==='setup-overlay')return;
+      el.classList.remove('show');
+    }
+  });
+});
+// Preview modal needs special close
+g('prev-modal').addEventListener('click',e=>{ if(e.target===g('prev-modal')) closePrev(); });
+</script>
+</body>
+</html>
