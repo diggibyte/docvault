@@ -170,7 +170,7 @@ aside{width:220px;flex-shrink:0;border-right:1px solid var(--border);background:
 
 /* Preview */
 .prev-modal{background:var(--surface);border-radius:16px;width:100%;max-width:800px;max-height:90vh;overflow-y:auto;box-shadow:var(--shadow-lg);animation:slideUp .25s ease}
-.prev-banner{min-height:200px;display:flex;align-items:center;justify-content:center;font-size:5rem;overflow:hidden}
+.prev-banner{height:220px;display:flex;align-items:center;justify-content:center;font-size:5rem}
 .prev-info{padding:24px}
 .prev-info h2{font-size:1.3rem;font-weight:800;margin-bottom:8px;letter-spacing:-.3px}
 .prev-desc{color:var(--text2);line-height:1.7;font-size:.88rem;margin-bottom:18px}
@@ -247,8 +247,8 @@ aside{width:220px;flex-shrink:0;border-right:1px solid var(--border);background:
     <div class="step-bar"><div class="step-dot on"></div><div class="step-dot"></div><div class="step-dot"></div></div>
     <div class="auth-logo"><div class="logo-mark">DV</div>DocVault</div>
     <span class="big-icon">🔐</span>
-    <h2>Admin Setup</h2>
-    <p class="auth-sub">This is a one-time setup for the <strong>admin account only</strong>. Regular viewers just open the gallery URL — no login needed. Set a password and connect your GitHub token to enable uploads and management.</p>
+    <h2>Create Admin Password</h2>
+    <p class="auth-sub">First-time setup. Choose a strong password — it will be hashed with PBKDF2 + SHA-256 and cannot be recovered if lost.</p>
     <div class="auth-err" id="setup-err"></div>
     <div class="form-row">
       <label>Admin Password</label>
@@ -266,18 +266,8 @@ aside{width:220px;flex-shrink:0;border-right:1px solid var(--border);background:
         <button class="pw-eye" onclick="eyeToggle('s-pw2',this)">👁</button>
       </div>
     </div>
-    <div class="form-row">
-      <label>GitHub Personal Access Token (PAT)
-        <a href="https://github.com/settings/tokens/new?scopes=repo&description=DocVault" target="_blank" style="color:var(--accent);font-size:.7rem;margin-left:6px;font-weight:400">Generate one ↗</a>
-      </label>
-      <div class="pw-wrap">
-        <input type="password" id="s-pat" placeholder="ghp_xxxxxxxxxxxxxxxxxxxx"/>
-        <button class="pw-eye" onclick="eyeToggle('s-pat',this)">👁</button>
-      </div>
-      <div style="font-size:.68rem;color:var(--muted);margin-top:4px">Needs <code style="background:var(--tag-bg);padding:1px 4px;border-radius:3px">repo</code> scope · encrypted with your password · never stored plaintext</div>
-    </div>
     <button class="btn-primary" id="setup-btn" onclick="doSetup()">Save & Open Gallery →</button>
-    <div class="setup-note">🔒 Password: PBKDF2 · SHA-256 · 200,000 iterations<br/>🔑 PAT: AES-256-GCM encrypted · stored in localStorage<br/>⚠️ Not recoverable — clear site data to reset</div>
+    <div class="setup-note">🔒 PBKDF2 · SHA-256 · 200,000 iterations · 32-byte random salt<br/>⚠️ Not recoverable. Clear browser site data to reset.</div>
   </div>
 </div>
 
@@ -350,7 +340,7 @@ aside{width:220px;flex-shrink:0;border-right:1px solid var(--border);background:
       <span class="u-name" id="u-name">Viewer</span>
       <span class="role-badge viewer" id="u-badge">viewer</span>
     </div>
-    <button class="btn-hdr" id="btn-login" onclick="openLogin()" style="opacity:0.5;font-size:.7rem">🔑 Admin</button>
+    <button class="btn-hdr" id="btn-login" onclick="openLogin()">🔑 Admin Login</button>
     <button class="btn-hdr danger hidden" id="btn-logout" onclick="doLogout()">Sign Out</button>
   </div>
 </header>
@@ -473,7 +463,7 @@ aside{width:220px;flex-shrink:0;border-right:1px solid var(--border);background:
   <div class="prev-modal">
     <div class="modal-hdr"><h2 id="prev-modal-title">Preview</h2><button class="modal-x" onclick="closePrev()">✕</button></div>
     <div class="prev-banner" id="prev-banner"></div>
-    <div id="dio-container" class="hidden"><div class="dio-wrap"><iframe id="dio-frame" sandbox="allow-scripts allow-same-origin allow-popups allow-forms" allowfullscreen></iframe></div></div>
+    <div id="dio-container" class="hidden"><div class="dio-wrap"><iframe id="dio-frame" allow="fullscreen" referrerpolicy="no-referrer"></iframe></div></div>
     <div class="prev-info">
       <div class="prev-tags" id="prev-tags"></div>
       <h2 id="prev-title"></h2>
@@ -578,174 +568,29 @@ const S = {
   _pendingDelete: null,
 };
 
-// ══════════════════════════════
-// GITHUB API LAYER
-// ══════════════════════════════
-const GH_OWNER  = 'diggibyte';
-const GH_REPO   = 'docvault';
-const GH_BRANCH = 'main';
-const GH_FILE   = 'data/docs.json';
-const SK_PAT    = 'dv_pat'; // stores AES-GCM encrypted PAT
-
-// AES-GCM encrypt/decrypt using a key derived from the admin password hash
-// We use the stored hash bytes directly as key material (already high-entropy)
-async function aesKey() {
-  const stored = localStorage.getItem(SK_HASH);
-  if (!stored) return null;
-  const { hash } = JSON.parse(stored);
-  const raw = h2b(hash); // 32 bytes = 256-bit key
-  return crypto.subtle.importKey('raw', raw, { name:'AES-GCM' }, false, ['encrypt','decrypt']);
-}
-
-async function encryptPAT(pat) {
-  const key = await aesKey(); if (!key) return null;
-  const iv  = crypto.getRandomValues(new Uint8Array(12));
-  const enc = await crypto.subtle.encrypt(
-    { name:'AES-GCM', iv },
-    key,
-    new TextEncoder().encode(pat)
-  );
-  return b2h(iv.buffer) + ':' + b2h(enc);
-}
-
-async function decryptPAT() {
-  const stored = localStorage.getItem(SK_PAT); if (!stored) return null;
-  try {
-    const [ivHex, dataHex] = stored.split(':');
-    const key = await aesKey(); if (!key) return null;
-    const dec = await crypto.subtle.decrypt(
-      { name:'AES-GCM', iv: h2b(ivHex) },
-      key,
-      h2b(dataHex)
-    );
-    return new TextDecoder().decode(dec);
-  } catch { return null; }
-}
-
-async function savePAT(pat) {
-  const enc = await encryptPAT(pat);
-  if (enc) localStorage.setItem(SK_PAT, enc);
-}
-
-const hasPAT = () => !!localStorage.getItem(SK_PAT);
-
-// ── GitHub REST API helpers ──
-async function ghGet(path) {
-  const pat = await decryptPAT();
-  const headers = { 'Accept':'application/vnd.github+json' };
-  if (pat) headers['Authorization'] = `Bearer ${pat}`;
-  const r = await fetch(`https://api.github.com/repos/${GH_OWNER}/${GH_REPO}/contents/${path}?ref=${GH_BRANCH}`, { headers });
-  if (!r.ok) return null;
-  return r.json();
-}
-
-async function ghPut(path, content, message, sha) {
-  const pat = await decryptPAT(); if (!pat) throw new Error('No PAT');
-  const body = { message, content: btoa(unescape(encodeURIComponent(content))), branch: GH_BRANCH };
-  if (sha) body.sha = sha;
-  const r = await fetch(`https://api.github.com/repos/${GH_OWNER}/${GH_REPO}/contents/${path}`, {
-    method: 'PUT',
-    headers: { 'Authorization':`Bearer ${pat}`, 'Accept':'application/vnd.github+json', 'Content-Type':'application/json' },
-    body: JSON.stringify(body),
-  });
-  if (!r.ok) { const e = await r.json(); throw new Error(e.message || r.status); }
-  return r.json();
-}
-
-async function ghDelete(path, message, sha) {
-  const pat = await decryptPAT(); if (!pat) throw new Error('No PAT');
-  const r = await fetch(`https://api.github.com/repos/${GH_OWNER}/${GH_REPO}/contents/${path}`, {
-    method: 'DELETE',
-    headers: { 'Authorization':`Bearer ${pat}`, 'Accept':'application/vnd.github+json', 'Content-Type':'application/json' },
-    body: JSON.stringify({ message, sha, branch: GH_BRANCH }),
-  });
-  if (!r.ok) { const e = await r.json(); throw new Error(e.message || r.status); }
-  return r.json();
-}
-
-// ── SHA cache so we don't fetch it on every write ──
-const _shaCache = {};
-
-async function getSHA(path) {
-  if (_shaCache[path]) return _shaCache[path];
-  const f = await ghGet(path);
-  if (f?.sha) _shaCache[path] = f.sha;
-  return f?.sha || null;
-}
-
-// ── Load docs.json from GitHub (public, no PAT needed for read) ──
-async function loadData() {
-  try {
-    // Use raw URL for fastest public read (CDN cached, no auth needed)
-    const url = `https://raw.githubusercontent.com/${GH_OWNER}/${GH_REPO}/${GH_BRANCH}/${GH_FILE}?_=${Date.now()}`;
-    const r = await fetch(url);
-    if (!r.ok) { S.docs=[]; return; }
-    const data = await r.json();
-    S.docs = data.docs || [];
-    S.tags = data.tags || S.tags;
-  } catch { S.docs = []; }
-}
-
-// ── Save docs.json to GitHub (requires PAT) ──
-async function saveData() {
-  const content = JSON.stringify({ docs: S.docs, tags: S.tags }, null, 2);
-  // Get current SHA (needed for updates)
-  const sha = await getSHA(GH_FILE);
-  const result = await ghPut(GH_FILE, content, `Update gallery data [${new Date().toISOString()}]`, sha);
-  if (result?.content?.sha) _shaCache[GH_FILE] = result.content.sha;
-}
-
-// ── Save a binary file to GitHub under data/files/ ──
-async function saveFile(docId, base64DataUrl) {
-  // base64DataUrl = "data:image/png;base64,XXXX" — strip the prefix
-  const b64 = base64DataUrl.split(',')[1];
-  const path = `data/files/${docId}`;
-  const sha = await getSHA(path);
-  const result = await ghPut(path, atob(b64).split('').map(c=>String.fromCharCode(c.charCodeAt(0))).join('') , `Upload file ${docId}`, sha);
-  // Actually — GitHub API content must be base64. Use the raw b64 directly:
-  // We re-do this correctly:
-  return ghPutRaw(path, b64, `Upload file ${docId}`, sha);
-}
-
-async function ghPutRaw(path, base64Content, message, sha) {
-  const pat = await decryptPAT(); if (!pat) throw new Error('No PAT');
-  const body = { message, content: base64Content, branch: GH_BRANCH };
-  if (sha) body.sha = sha;
-  const r = await fetch(`https://api.github.com/repos/${GH_OWNER}/${GH_REPO}/contents/${path}`, {
-    method: 'PUT',
-    headers: { 'Authorization':`Bearer ${pat}`, 'Accept':'application/vnd.github+json', 'Content-Type':'application/json' },
-    body: JSON.stringify(body),
-  });
-  if (!r.ok) { const e = await r.json(); throw new Error(e.message || r.status); }
-  const res = await r.json();
-  if (res?.content?.sha) _shaCache[path] = res.content.sha;
-  return res;
-}
-
-async function deleteFile(path) {
-  const sha = await getSHA(path); if (!sha) return;
-  await ghDelete(path, `Remove file ${path}`, sha);
-  delete _shaCache[path];
-}
-
-// Raw file URL for download/preview
-function rawFileURL(docId) {
-  return `https://raw.githubusercontent.com/${GH_OWNER}/${GH_REPO}/${GH_BRANCH}/data/files/${docId}`;
-}
+const loadData = () => {
+  try { const d=localStorage.getItem(SK_DOCS); if(d) S.docs=JSON.parse(d); } catch{}
+  try { const t=localStorage.getItem(SK_TAGS); if(t) S.tags=JSON.parse(t); } catch{}
+};
+const saveData = () => {
+  localStorage.setItem(SK_DOCS, JSON.stringify(S.docs));
+  localStorage.setItem(SK_TAGS, JSON.stringify(S.tags));
+};
 
 // ══════════════════════════════
 // BOOT
 // ══════════════════════════════
 window.addEventListener('DOMContentLoaded', () => {
-  // Everyone starts as viewer — load gallery immediately
-  // Setup screen only appears when admin explicitly logs in on a new device
-  initApp();
+  if (!hasPw()) {
+    document.getElementById('setup-overlay').classList.add('show');
+  } else {
+    initApp();
+  }
 });
 
-async function initApp() {
-  g('cards').innerHTML = `<div class="empty-state"><div class="big" style="animation:pulse 1.5s infinite">⏳</div><h3>Loading gallery…</h3><p>Fetching documents from GitHub</p></div>`;
-  g('btn-login').classList.remove('hidden');
-  await loadData();
+function initApp() {
+  loadData();
+  document.getElementById('btn-login').classList.remove('hidden');
   renderSidebar(); renderCards();
 }
 
@@ -753,21 +598,17 @@ async function initApp() {
 // SETUP
 // ══════════════════════════════
 async function doSetup() {
-  const p1  = g('s-pw1').value, p2 = g('s-pw2').value;
-  const pat = g('s-pat').value.trim();
+  const p1 = g('s-pw1').value, p2 = g('s-pw2').value;
   const err = g('setup-err');
   err.classList.remove('show');
-  if (p1.length < 8)  { showErr(err,'Password must be at least 8 characters.'); return; }
-  if (p1 !== p2)      { showErr(err,'Passwords do not match.'); return; }
-  if (!pat.startsWith('ghp_') && !pat.startsWith('github_pat_'))
-    { showErr(err,'GitHub token should start with ghp_ or github_pat_'); return; }
+  if (p1.length < 8) { showErr(err,'Password must be at least 8 characters.'); return; }
+  if (p1 !== p2)     { showErr(err,'Passwords do not match.'); return; }
   const btn = g('setup-btn');
-  btn.disabled=true; btn.textContent='Saving…';
+  btn.disabled=true; btn.textContent='Encrypting…';
   await savePw(p1);
-  await savePAT(pat); // encrypted with the password-derived key
   g('setup-overlay').classList.remove('show');
   btn.disabled=false; btn.textContent='Save & Open Gallery →';
-  toast('Setup complete ✓','success');
+  toast('Admin password set securely ✓','success');
   initApp();
 }
 
@@ -777,11 +618,6 @@ async function doSetup() {
 function openLogin() {
   const mins = lockedMins();
   if (mins) { toast(`Locked out — try again in ${mins} min`,'error'); return; }
-  // If no password stored on this device → show full setup screen
-  if (!hasPw()) {
-    g('setup-overlay').classList.add('show');
-    return;
-  }
   g('l-pw').value=''; g('login-err').classList.remove('show');
   updateAttemptNote();
   g('login-overlay').classList.add('show');
@@ -971,236 +807,56 @@ function cardL(d,i){
 // ══════════════════════════════
 // PREVIEW
 // ══════════════════════════════
-// ══════════════════════════════
-// DRAW.IO XML → SVG  (no external services, fully offline)
-// ══════════════════════════════
-function parseAttrsStr(str) {
-  const obj = {};
-  const re = /(\w[\w-]*)="([^"]*)"/g;
-  let m;
-  while ((m = re.exec(str)) !== null) obj[m[1]] = m[2];
-  return obj;
-}
-function parseStyleStr(s) {
-  const obj = {};
-  if (!s) return obj;
-  s.split(';').forEach(p => {
-    const eq = p.indexOf('=');
-    if (eq > 0) obj[p.slice(0,eq).trim()] = p.slice(eq+1).trim();
-  });
-  return obj;
-}
-function htmlEnt(s) {
-  return String(s||'').replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;');
-}
-
-function drawioXMLtoSVG(xmlString) {
-  // ── 1. Parse all mxCell elements ──
-  const cells = {};
-  // Match both self-closing and with children
-  const cellRe = /<mxCell([\s\S]*?)(?:\/?>|>([\s\S]*?)<\/mxCell>)/g;
-  const geoRe  = /<mxGeometry([^>]*?)(?:\/|><\/mxGeometry)>/;
-  let cm;
-  while ((cm = cellRe.exec(xmlString)) !== null) {
-    const a = parseAttrsStr(cm[1]);
-    const inner = (cm[2] || '') + cm[1];
-    const gm = geoRe.exec(inner);
-    if (gm) a._g = parseAttrsStr(gm[1]);
-    if (a.id) cells[a.id] = a;
-  }
-
-  const verts = Object.values(cells).filter(c => c.vertex === '1' && c._g);
-  const edges  = Object.values(cells).filter(c => c.edge === '1');
-
-  if (verts.length === 0) return null; // empty / unreadable
-
-  // ── 2. Bounding box ──
-  let x0=1e9,y0=1e9,x1=-1e9,y1=-1e9;
-  verts.forEach(v => {
-    const g=v._g, x=+g.x||0, y=+g.y||0, w=+g.width||120, h=+g.height||60;
-    x0=Math.min(x0,x); y0=Math.min(y0,y); x1=Math.max(x1,x+w); y1=Math.max(y1,y+h);
-  });
-  const PAD=40, W=x1-x0+PAD*2, H=y1-y0+PAD*2;
-  const ox=-x0+PAD, oy=-y0+PAD;
-
-  // ── 3. Render SVG ──
-  let out = `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 ${W} ${H}" style="width:100%;height:100%;background:#f8f9fa">
-<defs>
-  <marker id="arr" markerWidth="10" markerHeight="7" refX="9" refY="3.5" orient="auto">
-    <polygon points="0 0,10 3.5,0 7" fill="#555"/>
-  </marker>
-</defs>
-<rect width="${W}" height="${H}" fill="#f8f9fa"/>
-`;
-
-  // Edges first (behind shapes)
-  edges.forEach(e => {
-    const src=cells[e.source], tgt=cells[e.target];
-    if (!src?._g || !tgt?._g) return;
-    const sg=src._g, tg=tgt._g;
-    const sx=(+sg.x||0)+ox+(+sg.width||120)/2, sy=(+sg.y||0)+oy+(+sg.height||60)/2;
-    const tx=(+tg.x||0)+ox+(+tg.width||120)/2, ty=(+tg.y||0)+oy+(+tg.height||60)/2;
-    // Bend midpoint for curved look
-    const mx=(sx+tx)/2, my=(sy+ty)/2;
-    out += `<line x1="${sx.toFixed(1)}" y1="${sy.toFixed(1)}" x2="${tx.toFixed(1)}" y2="${ty.toFixed(1)}" stroke="#666" stroke-width="1.5" marker-end="url(#arr)"/>\n`;
-    if (e.value) {
-      out += `<text x="${mx.toFixed(1)}" y="${(my-6).toFixed(1)}" text-anchor="middle" font-family="Arial,sans-serif" font-size="11" fill="#555">${htmlEnt(e.value)}</text>\n`;
-    }
-  });
-
-  // Shapes
-  verts.forEach(v => {
-    const g=v._g;
-    const x=(+g.x||0)+ox, y=(+g.y||0)+oy, w=+g.width||120, h=+g.height||60;
-    const st=parseStyleStr(v.style||'');
-    const fill   = st.fillColor   || '#ffffff';
-    const stroke = st.strokeColor || '#aaaaaa';
-    const fc     = st.fontColor   || '#000000';
-    const fs     = Math.min(Math.max(+st.fontSize||13, 9), 18);
-    const fw     = (st.bold==='1'||st.fontStyle==='1') ? 'bold' : 'normal';
-    const lbl    = htmlEnt(v.value||'');
-
-    const shape = v.style||'';
-    const isEllipse  = shape.includes('ellipse');
-    const isRhombus  = shape.includes('rhombus');
-    const isHex      = shape.includes('hexagon');
-    const isCyl      = shape.includes('cylinder');
-    const isParallel = shape.includes('parallelogram');
-    const rnd        = st.rounded==='1' ? Math.min(10, h*0.25) : 0;
-    const dashed     = st.dashed==='1' ? 'stroke-dasharray="6,3"' : '';
-    const opacity    = st.opacity ? `opacity="${+st.opacity/100}"` : '';
-
-    if (isEllipse) {
-      out += `<ellipse cx="${(x+w/2).toFixed(1)}" cy="${(y+h/2).toFixed(1)}" rx="${(w/2).toFixed(1)}" ry="${(h/2).toFixed(1)}" fill="${fill}" stroke="${stroke}" stroke-width="1.5" ${dashed} ${opacity}/>\n`;
-    } else if (isRhombus) {
-      out += `<polygon points="${(x+w/2).toFixed(1)},${y.toFixed(1)} ${(x+w).toFixed(1)},${(y+h/2).toFixed(1)} ${(x+w/2).toFixed(1)},${(y+h).toFixed(1)} ${x.toFixed(1)},${(y+h/2).toFixed(1)}" fill="${fill}" stroke="${stroke}" stroke-width="1.5" ${dashed} ${opacity}/>\n`;
-    } else if (isHex) {
-      const r=Math.min(w,h)/4;
-      out += `<polygon points="${(x+r).toFixed(1)},${y.toFixed(1)} ${(x+w-r).toFixed(1)},${y.toFixed(1)} ${(x+w).toFixed(1)},${(y+h/2).toFixed(1)} ${(x+w-r).toFixed(1)},${(y+h).toFixed(1)} ${(x+r).toFixed(1)},${(y+h).toFixed(1)} ${x.toFixed(1)},${(y+h/2).toFixed(1)}" fill="${fill}" stroke="${stroke}" stroke-width="1.5" ${dashed} ${opacity}/>\n`;
-    } else {
-      out += `<rect x="${x.toFixed(1)}" y="${y.toFixed(1)}" width="${w.toFixed(1)}" height="${h.toFixed(1)}" rx="${rnd}" fill="${fill}" stroke="${stroke}" stroke-width="1.5" ${dashed} ${opacity}/>\n`;
-    }
-
-    // Label (wrap at ~20 chars)
-    if (lbl) {
-      const lines = wrapText(v.value||'', Math.floor(w/8));
-      const lineH = fs * 1.4;
-      const startY = y + h/2 - (lines.length-1)*lineH/2;
-      lines.forEach((ln,i) => {
-        out += `<text x="${(x+w/2).toFixed(1)}" y="${(startY+i*lineH).toFixed(1)}" text-anchor="middle" dominant-baseline="middle" font-family="Arial,sans-serif" font-size="${fs}" font-weight="${fw}" fill="${fc}">${htmlEnt(ln)}</text>\n`;
-      });
-    }
-  });
-
-  out += '</svg>';
-  return out;
-}
-
-function wrapText(text, maxChars) {
-  if (!text) return [''];
-  const words = text.split(' ');
-  const lines = [];
-  let cur = '';
-  words.forEach(w => {
-    if ((cur+' '+w).trim().length > maxChars && cur) { lines.push(cur); cur=w; }
-    else cur = (cur+' '+w).trim();
-  });
-  if (cur) lines.push(cur);
-  return lines.length ? lines : [text];
-}
-
-// ══════════════════════════════
-// PREVIEW
-// ══════════════════════════════
 function openPrev(id){
-  const d = S.docs.find(x=>x.id===id); if(!d) return;
-  const t   = ftype(d.fileName);
-  const ext = d.fileName.split('.').pop().toLowerCase();
+  const d=S.docs.find(x=>x.id===id); if(!d)return;
+  const t=ftype(d.fileName);
+  g('prev-modal-title').textContent=d.title;
+  g('prev-title').textContent=d.title;
+  g('prev-desc').textContent=d.description;
 
-  g('prev-modal-title').textContent = d.title;
-  g('prev-title').textContent       = d.title;
-  g('prev-desc').textContent        = d.description;
+  const banner=g('prev-banner');
+  const dioc=g('dio-container');
 
-  const banner = g('prev-banner');
-  const dioc   = g('dio-container');
-  const diofr  = g('dio-frame');
-
-  dioc.classList.add('hidden');
-  diofr.srcdoc = '';
-  diofr.src    = 'about:blank';
-  banner.style.display    = 'flex';
-  banner.style.background = '#f8f9fa';
-  banner.innerHTML        = '';
-
-  // ── CASE 1: draw.io → render our own SVG (no external service) ──
-  if (t === 'drawio' && d.fileData) {
-    const svg = drawioXMLtoSVG(d.fileData);
-    if (svg) {
-      banner.style.background = '#f8f9fa';
-      banner.style.padding    = '0';
-      banner.innerHTML        = svg;
-    } else {
-      banner.innerHTML = noPreview(ext, getThumb(d), 'Could not parse diagram XML');
-    }
-
-  // ── CASE 2: Image → show directly or fetch from GitHub ──
-  } else if (['png','jpg','jpeg','gif','webp'].includes(ext)) {
-    banner.style.background = '#111';
-    if(d.hasGithubFile){
-      banner.innerHTML = `<img src="${rawFileURL(d.id)}" style="max-width:100%;max-height:320px;object-fit:contain" alt="${esc(d.title)}" onerror="this.replaceWith(Object.assign(document.createElement('div'),{textContent:'Could not load image',style:'color:#fff;padding:20px'}))"/>`;
-    } else {
-      banner.innerHTML = noPreview(ext, getThumb(d));
-    }
-
-  // ── CASE 3: SVG ──
-  } else if (ext === 'svg') {
-    banner.style.background = '#fff';
-    banner.innerHTML = d.hasGithubFile
-      ? `<img src="${rawFileURL(d.id)}" style="max-width:100%;max-height:320px;object-fit:contain" alt="${esc(d.title)}"/>`
-      : noPreview(ext, getThumb(d));
-
-  // ── CASE 4: PDF → native browser viewer in iframe ──
-  } else if (ext === 'pdf' && d.hasGithubFile) {
+  // draw.io: show live iframe viewer
+  if(t==='drawio' && d.fileData){
     dioc.classList.remove('hidden');
-    banner.style.display = 'none';
-    diofr.src = rawFileURL(d.id);
-
-  // ── CASE 5: Everything else → thumbnail + message ──
+    banner.style.display='none';
+    // Use diagrams.net embed with the XML inline via blob URL
+    const blob = new Blob([d.fileData], {type:'text/xml'});
+    const blobUrl = URL.createObjectURL(blob);
+    // Store blobUrl to revoke later
+    g('dio-frame')._blobUrl = blobUrl;
+    g('dio-frame').src = `https://viewer.diagrams.net/?edit=_blank&nav=1&url=${encodeURIComponent(blobUrl)}`;
   } else {
-    banner.innerHTML = noPreview(ext, getThumb(d));
+    dioc.classList.add('hidden');
+    banner.style.display='flex';
+    // Show thumbnail in banner
+    if(!d.thumbnail) getThumb(d); // ensure generated
+    banner.style.background='#000';
+    banner.innerHTML=`<img src="${d.thumbnail}" style="width:100%;height:100%;object-fit:cover" alt="${esc(d.title)}"/>`;
   }
 
-  g('prev-tags').innerHTML = (d.tags||[]).map(tag=>`<span class="ctag">${esc(tag)}</span>`).join('');
-  g('prev-meta').innerHTML = `
+  g('prev-tags').innerHTML=(d.tags||[]).map(tag=>`<span class="ctag">${esc(tag)}</span>`).join('');
+  g('prev-meta').innerHTML=`
     <div class="pm-item"><div class="pm-lbl">File name</div><div class="pm-val">${esc(d.fileName)}</div></div>
     <div class="pm-item"><div class="pm-lbl">File size</div><div class="pm-val">${fbytes(d.fileSize)}</div></div>
     <div class="pm-item"><div class="pm-lbl">File type</div><div class="pm-val">${t.toUpperCase()}</div></div>
     <div class="pm-item"><div class="pm-lbl">Uploaded</div><div class="pm-val">${fdate(d.uploadedAt)}</div></div>`;
-  const adm = S.role==='admin'
-    ? `<button class="btn-pa secondary" onclick="delDoc('${d.id}')">🗑 Delete</button>` : '';
-  g('prev-acts').innerHTML = `
+  const adm=S.role==='admin'?`<button class="btn-pa secondary" onclick="delDoc('${d.id}');closePrev()">🗑 Delete</button>`:'';
+  g('prev-acts').innerHTML=`
     <button class="btn-pa primary" onclick="dlDoc('${d.id}')">⬇ Download</button>
-    <button class="btn-pa secondary" onclick="closePrev()">✕ Close</button>${adm}`;
+    <button class="btn-pa secondary" onclick="closePrev()">Close</button>${adm}`;
   g('prev-modal').classList.add('show');
-}
-
-function noPreview(ext, thumb, msg) {
-  return `<div style="text-align:center;padding:24px">
-    <img src="${thumb}" style="width:220px;height:138px;object-fit:cover;border-radius:10px;box-shadow:0 4px 20px rgba(0,0,0,.15);margin-bottom:14px;display:block;margin-left:auto;margin-right:auto"/>
-    <div style="font-size:.78rem;color:#8a847c;font-family:monospace">
-      ${msg || `Preview not available for .${ext} files`}<br/>
-      <span style="font-size:.7rem">Download to open in the native app</span>
-    </div>
-  </div>`;
 }
 
 function closePrev(){
   g('prev-modal').classList.remove('show');
-  g('dio-frame').src    = 'about:blank';
-  g('dio-frame').srcdoc = '';
+  // Revoke any blob URL created for drawio
+  const frame = g('dio-frame');
+  if(frame._blobUrl){ URL.revokeObjectURL(frame._blobUrl); frame._blobUrl=null; }
+  frame.src='about:blank';
   g('dio-container').classList.add('hidden');
-  const b = g('prev-banner');
-  b.style.display = 'flex'; b.innerHTML = ''; b.style.background = ''; b.style.padding = '';
+  g('prev-banner').style.display='flex';
 }
 
 // ══════════════════════════════
@@ -1395,52 +1051,24 @@ async function submitUpload(){
   if(!title){toast('Please enter a title','error');return;}
   if(!desc){toast('Please enter a description','error');return;}
   if(!S.selFile){toast('Please select a file','error');return;}
+  const btn=g('submit-btn'); btn.disabled=true; btn.textContent='Processing…';
+  const f=S.selFile, t=ftype(f.name);
+  let fileData=null;
+  if(t==='drawio') fileData=await rText(f);
 
-  const btn=g('submit-btn'); btn.disabled=true; btn.textContent='Uploading…';
+  // Determine thumbnail: user-supplied > auto-generated SVG
+  let thumbnail = S.selThumb || genSVGThumb(t, title);
 
-  try {
-    const f=S.selFile, t=ftype(f.name);
-    const docId = 'doc_'+Date.now()+'_'+Math.random().toString(36).slice(2,8);
-
-    // Read file
-    let fileData=null;
-    if(t==='drawio') fileData=await rText(f);
-    const fileBase64 = f.size < 10*1024*1024 ? await rB64(f) : null;
-
-    // Thumbnail
-    const thumbnail = S.selThumb || genSVGThumb(t, title);
-
-    // Push file to GitHub under data/files/<docId>
-    btn.textContent='Saving file…';
-    if(fileBase64){
-      const rawB64 = fileBase64.split(',')[1];
-      await ghPutRaw(`data/files/${docId}`, rawB64, `Upload: ${title}`);
-    } else if(fileData) {
-      await ghPutRaw(`data/files/${docId}`, btoa(unescape(encodeURIComponent(fileData))), `Upload: ${title}`);
-    }
-
-    // Build doc metadata (no binary blobs in docs.json — just refs)
-    const doc = {
-      id: docId, title, description:desc,
-      fileName:f.name, fileSize:f.size, fileType:t,
-      tags:[...S.selTags], uploadedAt:Date.now(),
-      thumbnail,
-      // store small drawio XML inline for preview rendering
-      fileData: (t==='drawio' && fileData && fileData.length < 200000) ? fileData : null,
-      hasGithubFile: true,
-    };
-
-    // Push updated docs.json
-    btn.textContent='Updating gallery…';
-    S.docs.unshift(doc);
-    await saveData();
-
-    closeUpload(); renderSidebar(); renderCards();
-    toast(`"${title}" uploaded & saved to GitHub ✓`,'success');
-  } catch(e) {
-    toast('Upload failed: ' + e.message,'error');
-    console.error(e);
-  }
+  const doc={
+    id:'doc_'+Date.now()+'_'+Math.random().toString(36).slice(2),
+    title, description:desc, fileName:f.name, fileSize:f.size,
+    fileType:t, tags:[...S.selTags], uploadedAt:Date.now(),
+    fileData, fileBase64:null, thumbnail,
+  };
+  if(f.size<5*1024*1024) doc.fileBase64=await rB64(f);
+  S.docs.unshift(doc); saveData();
+  closeUpload(); renderSidebar(); renderCards();
+  toast(`"${title}" uploaded`,'success');
   btn.disabled=false; btn.textContent='↑ Upload Document';
 }
 const rText=f=>new Promise((res,rej)=>{const r=new FileReader();r.onload=e=>res(e.target.result);r.onerror=rej;r.readAsText(f)});
@@ -1449,52 +1077,25 @@ const rB64=f=>new Promise((res,rej)=>{const r=new FileReader();r.onload=e=>res(e
 // ══════════════════════════════
 // DOWNLOAD / DELETE
 // ══════════════════════════════
-async function dlDoc(id){
-  const d=S.docs.find(x=>x.id===id); if(!d) return;
-  toast('Preparing download…','info');
-  try {
-    if(d.hasGithubFile){
-      // Fetch raw file from GitHub
-      const url = rawFileURL(d.id);
-      const r = await fetch(url);
-      if(!r.ok) throw new Error('File not found on GitHub');
-      const blob = await r.blob();
-      const a = document.createElement('a');
-      a.href = URL.createObjectURL(blob);
-      a.download = d.fileName; a.click();
-      setTimeout(()=>URL.revokeObjectURL(a.href),2000);
-    } else if(d.fileData){
-      const blob=new Blob([d.fileData],{type:'text/xml'});
-      const a=document.createElement('a');
-      a.href=URL.createObjectURL(blob); a.download=d.fileName; a.click();
-      setTimeout(()=>URL.revokeObjectURL(a.href),2000);
-    } else {
-      toast('No file data available','error'); return;
-    }
-    toast(`Downloading "${d.title}"`,'info');
-  } catch(e) { toast('Download failed: '+e.message,'error'); }
+function dlDoc(id){
+  const d=S.docs.find(x=>x.id===id);if(!d)return;
+  if(d.fileBase64){const a=document.createElement('a');a.href=d.fileBase64;a.download=d.fileName;a.click();toast(`Downloading "${d.title}"`,'info');}
+  else if(d.fileData){const blob=new Blob([d.fileData],{type:'text/xml'});const url=URL.createObjectURL(blob);const a=document.createElement('a');a.href=url;a.download=d.fileName;a.click();setTimeout(()=>URL.revokeObjectURL(url),1000);toast(`Downloading "${d.title}"`,'info');}
+  else toast('File >5MB — re-upload to enable download','error');
 }
-
-async function confirmDelete(){
-  const id=S._pendingDelete; if(!id) return;
+function delDoc(id){
+  S._pendingDelete=id;
   const d=S.docs.find(x=>x.id===id);
-  const btn=g('confirm-modal').querySelector('button:last-child');
-  btn.disabled=true; btn.textContent='Deleting…';
-  try {
-    // Remove file from GitHub
-    if(d?.hasGithubFile){
-      await deleteFile(`data/files/${id}`);
-    }
-    S.docs=S.docs.filter(x=>x.id!==id);
-    await saveData();
-    renderSidebar(); renderCards();
-    if(!g('admin-view').classList.contains('hidden')) renderAdmin();
-    if(g('prev-modal').classList.contains('show')) closePrev();
-    toast('Document deleted','info');
-  } catch(e) {
-    toast('Delete failed: '+e.message,'error');
-  }
-  btn.disabled=false; btn.textContent='Delete';
+  g('confirm-doc-name').textContent=d?`"${d.title}"`:'this document';
+  g('confirm-modal').classList.add('show');
+}
+function confirmDelete(){
+  const id=S._pendingDelete; if(!id)return;
+  S.docs=S.docs.filter(x=>x.id!==id); saveData();
+  renderSidebar(); renderCards();
+  if(!g('admin-view').classList.contains('hidden'))renderAdmin();
+  if(g('prev-modal').classList.contains('show'))closePrev();
+  toast('Document deleted','info');
   closeConfirm();
 }
 function closeConfirm(){
@@ -1515,20 +1116,16 @@ function renderTMList(){
     return `<div class="tm-row"><div class="tm-name">${esc(tag)}</div><div class="tm-cnt">${cnt} doc${cnt!==1?'s':''}</div><button class="tm-del" onclick="removeTag('${esc(tag)}')">🗑</button></div>`;
   }).join('');
 }
-async function addTag(){
+function addTag(){
   const inp=g('tm-inp'),val=inp.value.trim();
-  if(!val)return; if(S.tags.includes(val)){toast('Tag already exists','error');return;}
-  S.tags.push(val); inp.value='';
-  try{ await saveData(); renderTMList(); renderSidebar(); toast(`Tag "${val}" added`,'success'); }
-  catch(e){ toast('Save failed: '+e.message,'error'); S.tags.pop(); }
+  if(!val)return;if(S.tags.includes(val)){toast('Tag already exists','error');return;}
+  S.tags.push(val);saveData();inp.value='';renderTMList();renderSidebar();toast(`Tag "${val}" added`,'success');
 }
-async function removeTag(tag){
-  const prevTags=[...S.tags];
+function removeTag(tag){
   S.tags=S.tags.filter(t=>t!==tag);
   S.docs.forEach(d=>{d.tags=(d.tags||[]).filter(t=>t!==tag)});
   S.tagFilters=S.tagFilters.filter(t=>t!==tag);
-  try{ await saveData(); renderTMList(); renderSidebar(); renderCards(); toast(`Tag "${tag}" removed`,'info'); }
-  catch(e){ toast('Save failed: '+e.message,'error'); S.tags=prevTags; }
+  saveData();renderTMList();renderSidebar();renderCards();toast(`Tag "${tag}" removed`,'info');
 }
 
 // ══════════════════════════════
