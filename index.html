@@ -247,8 +247,8 @@ aside{width:220px;flex-shrink:0;border-right:1px solid var(--border);background:
     <div class="step-bar"><div class="step-dot on"></div><div class="step-dot"></div><div class="step-dot"></div></div>
     <div class="auth-logo"><div class="logo-mark">DV</div>DocVault</div>
     <span class="big-icon">🔐</span>
-    <h2>One-time Setup</h2>
-    <p class="auth-sub">Set an admin password and connect your GitHub repo. Your PAT is encrypted and stored locally — never sent anywhere except GitHub's API.</p>
+    <h2>Admin Setup</h2>
+    <p class="auth-sub">This is a one-time setup for the <strong>admin account only</strong>. Regular viewers just open the gallery URL — no login needed. Set a password and connect your GitHub token to enable uploads and management.</p>
     <div class="auth-err" id="setup-err"></div>
     <div class="form-row">
       <label>Admin Password</label>
@@ -350,7 +350,7 @@ aside{width:220px;flex-shrink:0;border-right:1px solid var(--border);background:
       <span class="u-name" id="u-name">Viewer</span>
       <span class="role-badge viewer" id="u-badge">viewer</span>
     </div>
-    <button class="btn-hdr" id="btn-login" onclick="openLogin()">🔑 Admin Login</button>
+    <button class="btn-hdr" id="btn-login" onclick="openLogin()" style="opacity:0.5;font-size:.7rem">🔑 Admin</button>
     <button class="btn-hdr danger hidden" id="btn-logout" onclick="doLogout()">Sign Out</button>
   </div>
 </header>
@@ -737,15 +737,12 @@ function rawFileURL(docId) {
 // BOOT
 // ══════════════════════════════
 window.addEventListener('DOMContentLoaded', () => {
-  if (!hasPw()) {
-    g('setup-overlay').classList.add('show');
-  } else {
-    initApp();
-  }
+  // Everyone starts as viewer — load gallery immediately
+  // Setup screen only appears when admin explicitly logs in on a new device
+  initApp();
 });
 
 async function initApp() {
-  // Show loading state
   g('cards').innerHTML = `<div class="empty-state"><div class="big" style="animation:pulse 1.5s infinite">⏳</div><h3>Loading gallery…</h3><p>Fetching documents from GitHub</p></div>`;
   g('btn-login').classList.remove('hidden');
   await loadData();
@@ -780,6 +777,11 @@ async function doSetup() {
 function openLogin() {
   const mins = lockedMins();
   if (mins) { toast(`Locked out — try again in ${mins} min`,'error'); return; }
+  // If no password stored on this device → show full setup screen
+  if (!hasPw()) {
+    g('setup-overlay').classList.add('show');
+    return;
+  }
   g('l-pw').value=''; g('login-err').classList.remove('show');
   updateAttemptNote();
   g('login-overlay').classList.add('show');
