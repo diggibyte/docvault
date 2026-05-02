@@ -296,7 +296,27 @@ aside{width:var(--side);flex-shrink:0;border-right:1px solid var(--border);backg
   </div>
 </div>
 
-<!-- ══ CONFIRM DELETE ══ -->
+<!-- ══ UPDATE PAT ══ -->
+<div class="ov" id="ov-pat">
+  <div class="abox">
+    <h2 style="margin-bottom:4px">🔑 Update GitHub Token</h2>
+    <p class="sub">Your current PAT may have expired. Paste a new one below. It will be encrypted with your existing password.</p>
+    <div class="aerr" id="pat-err"></div>
+    <div class="frow">
+      <label>New GitHub PAT
+        <a href="https://github.com/settings/tokens/new?scopes=repo&description=DocVault" target="_blank">Generate one ↗</a>
+      </label>
+      <div class="pww"><input type="password" id="pat-inp" placeholder="ghp_xxxxxxxxxxxx"/><button class="eye" onclick="eyeOn('pat-inp',this)">👁</button></div>
+      <div style="font-size:.63rem;color:var(--muted);margin-top:3px">Needs <code style="background:var(--tag);padding:1px 4px;border-radius:3px">repo</code> scope · encrypted with AES-256-GCM</div>
+    </div>
+    <div class="frow">
+      <label>Confirm with Admin Password</label>
+      <div class="pww"><input type="password" id="pat-pw" placeholder="Your admin password"/><button class="eye" onclick="eyeOn('pat-pw',this)">👁</button></div>
+    </div>
+    <button class="abtn" onclick="doUpdatePAT()">Save New Token</button>
+    <button class="aghost" onclick="closeOv('ov-pat')">Cancel</button>
+  </div>
+</div>
 <div class="ov" id="ov-confirm" style="z-index:950">
   <div class="cbox">
     <div style="font-size:2.2rem;margin-bottom:11px">🗑️</div>
@@ -425,7 +445,8 @@ aside{width:var(--side);flex-shrink:0;border-right:1px solid var(--border);backg
     <div class="seccard">
       <h3>🔐 Security Status</h3>
       <div class="sicogrid" id="sec-info"></div>
-      <button class="bsm" onclick="openOv('ov-cpw')">🔄 Change Password</button>
+      <button class="bsm" onclick="openOv('ov-cpw')" style="margin-right:6px">🔄 Change Password</button>
+      <button class="bsm" onclick="openOv('ov-pat')">🔑 Update GitHub Token</button>
     </div>
     <div class="sgrid" id="stats"></div>
     <h3 style="font-size:.83rem;font-weight:700;margin-bottom:11px;color:var(--text2)">All Documents</h3>
@@ -528,14 +549,18 @@ async function ghSHA(path) {
   return sha;
 }
 async function ghPut(path, b64, msg) {
-  const pat = await getPAT(); if(!pat) throw new Error('No PAT');
+  const pat = await getPAT(); if(!pat) throw new Error('No PAT — please sign in as Admin first');
   const sha = await ghSHA(path);
   const body = {message:msg, content:b64, branch:GH_BRANCH};
   if(sha) body.sha = sha;
   const r = await fetch(`https://api.github.com/repos/${GH_OWNER}/${GH_REPO}/contents/${path}`, {
     method:'PUT', headers:{...(await ghHeaders()),'Content-Type':'application/json'}, body:JSON.stringify(body)
   });
-  if(!r.ok){const e=await r.json();throw new Error(e.message||r.status);}
+  if(!r.ok){
+    const e = await r.json();
+    delete _sha[path]; // clear stale SHA so retry works
+    throw new Error(e.message||r.status);
+  }
   const res = await r.json();
   if(res?.content?.sha) _sha[path] = res.content.sha;
   return res;
@@ -562,8 +587,21 @@ async function loadData() {
   } catch { S.docs=[]; }
 }
 async function saveData() {
-  const json = JSON.stringify({docs:S.docs, tags:S.tags}, null, 2);
-  const b64  = btoa(unescape(encodeURIComponent(json)));
+  // Strip thumbnails before saving — they're regenerated client-side from canvas
+  // This keeps docs.json small (thumbnails are ~50KB each as base64 PNGs)
+  const cleanDocs = S.docs.map(d => {
+    const c = {...d};
+    // Only strip canvas-generated thumbs (data:image/png). Keep user-uploaded ones (data:image/jpeg)
+    if(c.thumbnail && c.thumbnail.startsWith('data:image/png')) delete c.thumbnail;
+    return c;
+  });
+  const json = JSON.stringify({docs:cleanDocs, tags:S.tags}, null, 2);
+  // Use TextEncoder for safe base64 encoding of unicode content
+  const bytes  = new TextEncoder().encode(json);
+  const binary = Array.from(bytes).map(b => String.fromCharCode(b)).join('');
+  const b64    = btoa(binary);
+  // Always re-fetch SHA before writing to avoid stale cache conflicts
+  delete _sha[GH_FILE];
   await ghPut(GH_FILE, b64, `Update gallery [${new Date().toISOString().slice(0,10)}]`);
 }
 
@@ -661,6 +699,23 @@ async function doChangePw(){
   if(n1!==n2){showErr(err,'New passwords do not match.');return;}
   if(!await verifyPw(cur)){showErr(err,'Current password is incorrect.');return;}
   await savePw(n1); closeOv('ov-cpw'); toast('Password updated ✓','s');
+}
+
+async function doUpdatePAT(){
+  const pat=g('pat-inp').value.trim(), pw=g('pat-pw').value;
+  const err=g('pat-err'); err.classList.remove('on');
+  if(!pat.startsWith('ghp_')&&!pat.startsWith('github_pat_')){
+    showErr(err,'Invalid token format. Should start with ghp_ or github_pat_'); return;
+  }
+  if(!pw){showErr(err,'Enter your admin password to confirm.');return;}
+  if(!await verifyPw(pw)){showErr(err,'Incorrect admin password.');return;}
+  await savePAT(pat);
+  // Clear SHA cache so next save re-fetches with new token
+  Object.keys(_sha).forEach(k=>delete _sha[k]);
+  g('pat-inp').value=''; g('pat-pw').value='';
+  closeOv('ov-pat'); toast('GitHub token updated ✓','s');
+  // Update security display
+  renderAdmin();
 }
 
 // ══════════════════════════════════════════════════
@@ -987,9 +1042,14 @@ async function submitUpload(){
     btn.textContent='Saving file…';
     const b64raw=await rB64raw(f);
     if(b64raw)await ghPut(`data/files/${id}`,b64raw,`Upload: ${title}`);
-    const thumbnail=S.selThumb||genThumb(t,title);
+    // Thumbnail: store user-uploaded jpeg thumbs inline, but canvas-generated PNGs 
+    // are regenerated on the fly so don't waste space storing them in docs.json
+    const isUserThumb = S.selThumb && S.selThumb.startsWith('data:image/jpeg');
+    const thumbnail = isUserThumb ? S.selThumb : genThumb(t, title); // will be stored in S.docs for current session
     const doc={id,title,description:desc,fileName:f.name,fileSize:f.size,fileType:t,
-      tags:[...S.selTags],uploadedAt:Date.now(),thumbnail,hasGithubFile:!!b64raw,
+      tags:[...S.selTags],uploadedAt:Date.now(),
+      thumbnail,  // kept in memory for rendering; canvas ones stripped from disk by saveData()
+      hasGithubFile:!!b64raw,
       fileData:(t==='drawio'&&fileData&&fileData.length<200000)?fileData:null};
     btn.textContent='Updating gallery…';
     S.docs.unshift(doc);await saveData();
@@ -1082,7 +1142,7 @@ function renderAdmin(){
     <div class="si"><div class="si-lbl">Algorithm</div><div class="si-val ok">PBKDF2-SHA256 · ${ITERS.toLocaleString()} iters</div></div>
     <div class="si"><div class="si-lbl">Password set</div><div class="si-val ok">${pw?fdate(pw.at):'—'}</div></div>
     <div class="si"><div class="si-lbl">Failed attempts</div><div class="si-val ${lk.a>0?'warn':'ok'}">${lk.a} / ${MAX_ATT}</div></div>
-    <div class="si"><div class="si-lbl">PAT</div><div class="si-val ok">${hasPAT()?'Stored (AES-256-GCM)':'Not set'}</div></div>`;
+    <div class="si"><div class="si-lbl">PAT</div><div class="si-val ${hasPAT()?'ok':'warn'}">${hasPAT()?'Stored (AES-256-GCM)':'⚠ Not set — upload will fail'}</div></div>`;
   g('stats').innerHTML=`
     <div class="scard"><div class="sico2">📁</div><div class="snum">${docs.length}</div><div class="slb">Documents</div></div>
     <div class="scard"><div class="sico2">🏷️</div><div class="snum">${S.tags.length}</div><div class="slb">Tags</div></div>
@@ -1137,7 +1197,7 @@ function eyeOn(id,btn){const i=g(id);i.type=i.type==='password'?'text':'password
 document.querySelectorAll('.ov').forEach(el=>{
   el.addEventListener('click',e=>{
     if(e.target!==el)return;
-    if(el.id==='ov-setup')return; // can't dismiss setup
+    if(el.id==='ov-setup')return;
     if(el.id==='ov-prev')closePrev();
     else if(el.id==='ov-upload')closeUpload();
     else closeOv(el.id);
